@@ -1,0 +1,14 @@
+name: Push to GitHub
+on:
+  workflow_dispatch:
+jobs:
+  push_to_gh:
+    name: Push to GitHub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone from Codeberg
+        run: git clone https://codeberg.org/quizfreely/idb-api-layer.git
+      - name: Push to GitHub
+        run: |
+          cd idb-api-layer
+          git push https://ehanahamed:${{ secrets.GH_TOKEN }}@github.com/quizfreely/idb-api-layer.git --all

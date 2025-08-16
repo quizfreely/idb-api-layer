@@ -1,0 +1,14 @@
+name: Push to Codeberg
+on:
+  workflow_dispatch:
+jobs:
+  push_to_codeberg:
+    name: Push to Codeberg
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone from GitHub
+        run: git clone https://github.com/quizfreely/docs.git
+      - name: Push to Codeberg
+        run: |
+          cd docs
+          git push https://ehanahamed:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/quizfreely/docs.git --all
