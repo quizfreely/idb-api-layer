@@ -127,7 +127,7 @@ export default {
 
         existingProgress = await db.term_progress.where("term_id").equals(term_id);
         if (existingProgress?.length > 0) {
-            db.term_progress.update(
+            await db.term_progress.update(
                 existingProgress[0].id,
                 {
                     term_last_reviewed_at: term_reviewed_at != null ?
@@ -143,9 +143,10 @@ export default {
                     term_leitner_system_box: term_leitner_system_box ?? existingProgress[0].term_leitner_system_box,
                     def_leitner_system_box: def_leitner_system_box ?? existingProgress[0].def_leitner_system_box
                 }
-            )
+            );
+            return existingProgress[0].id;
         } else {
-            db.term_progress.add({
+            const newProgressId = await db.term_progress.add({
                 term_id: term_id,
                 term_first_reviewed_at: term_reviewed_at?.toISOString(),
                 term_last_reviewed_at: term_reviewed_at?.toISOString(),
@@ -157,7 +158,8 @@ export default {
                     1 : 0,
                 term_leitner_system_box: term_leitner_system_box,
                 def_leitner_system_box: def_leitner_system_box
-            })
+            });
+            return newProgressId;
         }
     }
 }
