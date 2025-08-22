@@ -33,6 +33,9 @@ export default {
                 resolveProps.terms
             );
         }
+        if (resolveProps?.practice_tests) {
+            studysets[0].practice_tests = await db.practice_tests.where("studyset_id").equals(id).toArray();
+        }
 
         return studysets[0];
     },
