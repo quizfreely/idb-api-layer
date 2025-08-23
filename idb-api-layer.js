@@ -42,11 +42,39 @@ export default {
     getTermsByStudysetId: async function (studysetId, resolveProps) {
         const terms = await db.terms.where("studysetId").equals(studysetId).toArray();
 
-        if (resolveProps?.progress) {
+        if (resolveProps?.progress || resolveProps?.topConfusionPairs || resolveProps?.topReverseConfusionPairs) {
             await Promise.all(
                 terms.map(async term => {
-                    const progressArr = await db.termProgress.where("termId").equals(term.id).toArray();
-                    term.progress = progressArr?.[0] ?? null;
+                    let indicies = {};
+                    let promises = [];
+                    if (resolveProps?.progress) {
+                        indicies.progress = promises.length;
+                        promises.push(
+                            db.termProgress.where("termId").equals(term.id).toArray()
+                        );
+                    }
+                    if (resolveProps?.topConfusionPairs) {
+                        indicies.topConfusionPairs = promises.length;
+                        promises.push(
+                            db.topConfusionPairs.where("termId").equals(term.id).toArray()
+                        );
+                    }
+                    if (resolveProps?.topReverseConfusionPairs) {
+                        indicies.topReverseConfusionPairs = promises.length;
+                        promises.push(
+                            db.topReverseConfusionPairs.where("termId").equals(term.id).toArray()
+                        );
+                    }
+                    const results = await Promise.all(promises);
+                    if (resolveProps?.progress) {
+                        term.progress = results[indicies.progress]?.[0] ?? null;
+                    }
+                    if (resolveProps?.topConfusionPairs) {
+                        term.topConfusionPairs = results[indicies.topConfusionPairs];
+                    }
+                    if (resolveProps?.topReverseConfusionPairs) {
+                        term.topReverseConfusionPairs = results[indicies.topReverseConfusionPairs];
+                    }
                 })
             );
         }
@@ -185,5 +213,17 @@ export default {
             });
             return newProgressId;
         }
+    },
+    getTopConfusionPairs: async function (termId, resolveProps) {
+        const confusionPairs = db.termConfusionPairs.where("termId").equals(termId).orderBy("confused_count").limit(3).toArray();
+        if (resolveProps?.confusedTerm) {
+            await Promise.all(
+                confusionPairs.map(async confusionPair => {
+                    const confusedTerm = await db.terms.where("id").equals(confusionPair.confusedTermId);
+                    confusionPair.confusedTerm = confusedTerm?.[0] ?? null;
+                })
+            );
+        }
+        return confusionPairs;
     }
 }
