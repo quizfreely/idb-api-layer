@@ -56,13 +56,13 @@ export default {
                     if (resolveProps?.topConfusionPairs) {
                         indicies.topConfusionPairs = promises.length;
                         promises.push(
-                            db.topConfusionPairs.where("termId").equals(term.id).toArray()
+                            this.getTopConfusionPairs(term.id)
                         );
                     }
                     if (resolveProps?.topReverseConfusionPairs) {
                         indicies.topReverseConfusionPairs = promises.length;
                         promises.push(
-                            db.topReverseConfusionPairs.where("termId").equals(term.id).toArray()
+                            this.getTopReverseConfusionPairs(term.id)
                         );
                     }
                     const results = await Promise.all(promises);
@@ -215,7 +215,7 @@ export default {
         }
     },
     getTopConfusionPairs: async function (termId, resolveProps) {
-        const confusionPairs = db.termConfusionPairs.where("termId").equals(termId).orderBy("confused_count").limit(3).toArray();
+        const confusionPairs = db.termConfusionPairs.where("termId").equals(termId).orderBy("confusedCount").limit(3).toArray();
         if (resolveProps?.confusedTerm) {
             await Promise.all(
                 confusionPairs.map(async confusionPair => {
@@ -225,5 +225,47 @@ export default {
             );
         }
         return confusionPairs;
+    },
+    getTopReverseConfusionPairs: async function (confusedTermId, resolveProps) {
+        const confusionPairs = db.termConfusionPairs.where("confusedTermId").equals(confusedTermId).orderBy("confusedCount").limit(3).toArray();
+        if (resolveProps?.confusedTerm) {
+            await Promise.all(
+                confusionPairs.map(async confusionPair => {
+                    const term = await db.terms.where("id").equals(confusionPair.termId);
+                    confusionPair.confusedTerm = term?.[0] ?? null;
+                })
+            );
+        }
+        return confusionPairs;
+    },
+    recordConfusionPairs: async function (confusionPairs) {
+        for (const confusionPairInput of confusionPairs) {
+            const existingRow = await db.termConfusionPairs.where(
+                "[termId+confusedTermId]"
+            ).equals([
+                confusionPairInput.termId,
+                confusionPairInput.confusedTermId,
+            ]).filter(
+                row => row.answeredWith == confusionPairInput.answeredWith
+            ).toArray();
+            if (existingRow.length > 0) {
+                db.termConfusionPairs.update(
+                    existingRow[0].id,
+                    {
+                        confusedCount: existingRow[0].confusedCount + confusionPairInput.confusedCountIncrease,
+                        lastConfusedAt: confusionPairInput.confusedAt
+                    }
+                );
+            } else {
+                db.termConfusionPairs.add({
+                    termId: confusionPairInput.termId,
+                    confusedTermId: confusionPairInput.confusedTermId,
+                    answeredWith: confusionPairInput.answeredWith,
+                    confusedCount: confusionPairInput.confusedCountIncrease,
+                    lastConfusedAt: confusionPairInput.confusedAt
+                });
+            }
+        }
+        return true;
     }
 }
