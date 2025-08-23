@@ -73,4 +73,39 @@ db.version(8).stores({
     term_confusion_pairs: "++id, term_id, confused_term_id, answered_with, confused_count, last_confused_at",
     practice_tests: "++id, timestamp, studyset_id, questions_correct, questions_total, questions"
 });
+db.version(9).stores({
+    studysets: '++id, title, updatedAt',
+    terms: "++id, studysetId, sortOrder, createdAt, updatedAt",
+    termProgress: "++id, termId, termFirstReviewedAt, termLastReviewedAt, " +
+        "termReviewCount, defFirstReviewedAt, defLastReviewedAt, " +
+        "defReviewCount, termLeitnerSystemBox, defLeitnerSystemBox",
+    termConfusionPairs: "++id, termId, confusedTermId, answeredWith, confusedCount, lastConfusedAt",
+    practiceTests: "++id, timestamp, studysetId, questionsCorrect, questionsTotal"
+}).upgrade(async tx => {
+    await tx.studysets.toCollection().modify(studyset => {
+        studyset.updatedAt = studyset.updated_at;
+        studyset.updated_at = undefined;
+    });
+    await tx.terms.toCollection().modify(term => {
+        term.studysetId = term.studyset_id;
+        term.studyset_id = undefined;
+        term.sortOrder = term.sort_order;
+        term.sort_order = undefined;
+        term.createdAt = term.created_at;
+        term.created_at = undefined;
+        term.updatedAt = term.updated_at;
+        term.updated_at = undefined;
+    });
+    await tx.terms.toCollection().modify(term => {
+        term.studysetId = term.studyset_id;
+        term.studyset_id = undefined;
+        term.sortOrder = term.sort_order;
+        term.sort_order = undefined;
+        term.createdAt = term.created_at;
+        term.created_at = undefined;
+        term.updatedAt = term.updated_at;
+        term.updated_at = undefined;
+    });
+    await tx.terms
+})
 export default db;
