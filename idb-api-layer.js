@@ -93,6 +93,25 @@ export default {
 
         return terms;
     },
+    getTermById: async function (termId, resolveProps) {
+        let term = await db.terms.where("id").equals(termId).toArray()?.[0];
+        if (term == null) {
+            console.log("(idbApiLayer.getTermById) term not found")
+            return term;
+        }
+
+        if (resolveProps?.progress) {
+            term.progress = db.termProgress.where("termId").equals(termId).toArray()?.[0];
+        }
+        if (resolveProps?.topConfusionPairs) {
+            term.topConfusionPairs = await this.getTopConfusionPairs(term.id);
+        }
+        if (resolveProps?.topReverseConfusionPairs) {
+            term.topReverseConfusionPairs = await this.getTopReverseConfusionPairs(term.id);
+        }
+
+        return term;
+    },
     createStudyset: async function ({ title }, terms) {
         const rnISOString = (new Date()).toISOString();
         const newId = await db.studysets.add({
