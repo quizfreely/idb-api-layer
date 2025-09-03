@@ -54,7 +54,11 @@ export default {
                 true,
                 true
             ).toArray();
-        if (resolveProps?.progress || resolveProps?.topConfusionPairs || resolveProps?.topReverseConfusionPairs) {
+        if (resolveProps?.progress ||
+            resolveProps?.progressHistory ||
+            resolveProps?.topConfusionPairs ||
+            resolveProps?.topReverseConfusionPairs
+        ) {
             await Promise.all(
                 terms.map(async term => {
                     let indicies = {};
@@ -63,6 +67,12 @@ export default {
                         indicies.progress = promises.length;
                         promises.push(
                             db.termProgress.where("termId").equals(term.id).toArray()
+                        );
+                    }
+                    if (resolveProps?.progressHistory) {
+                        indicies.progressHistory = promises.length;
+                        promises.push(
+                            db.termProgressHistory.where("termId").equals(term.id).toArray()
                         );
                     }
                     if (resolveProps?.topConfusionPairs) {
@@ -80,6 +90,9 @@ export default {
                     const results = await Promise.all(promises);
                     if (resolveProps?.progress) {
                         term.progress = results[indicies.progress]?.[0] ?? null;
+                    }
+                    if (resolveProps?.progressHistory) {
+                        term.progressHistory = results[indicies.progressHistory];
                     }
                     if (resolveProps?.topConfusionPairs) {
                         term.topConfusionPairs = results[indicies.topConfusionPairs];
