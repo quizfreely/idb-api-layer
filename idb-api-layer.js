@@ -180,70 +180,93 @@ export default {
         await db.terms.where("studysetId").equals(id).delete(); /* delete terms using studyset ID */
         await db.studysets.delete(id); /* delete studyset */
     },
-    updateTermProgress: async function ({
-        termId,
-        termReviewedAt, defReviewedAt,
-        termLeitnerSystemBox, defLeitnerSystemBox,
-        termCorrectIncrease, termIncorrectIncrease,
-        defCorrectIncrease, defIncorrectIncrease
-    }) {
-        if (termReviewedAt != null && !(
-            termReviewedAt instanceof Date && !isNaN(termReviewedAt)
-        )) {
-            console.error("(idb-api-layer: updateTermProgress) termReviewedAt is not a valid Date object and not null")
-            return false;
-        }
-        if (defReviewedAt != null && !(
-            defReviewedAt instanceof Date && !isNaN(defReviewedAt)
-        )) {
-            console.error("(idb-api-layer: updateTermProgress) defReviewedAt is not a valid Date object and not null")
-            return false;
-        }
+    updateTermProgress: async function (termProgressArray) {
+        termProgressArray.forEach(({
+            termId,
+            termReviewedAt, defReviewedAt,
+            termLeitnerSystemBox, defLeitnerSystemBox,
+            termCorrectIncrease, termIncorrectIncrease,
+            defCorrectIncrease, defIncorrectIncrease
+        }) => {
+            if (termReviewedAt != null && !(
+                termReviewedAt instanceof Date && !isNaN(termReviewedAt)
+            )) {
+                console.error("(idb-api-layer: updateTermProgress) termReviewedAt is not a valid Date object and not null")
+                return false;
+            }
+            if (defReviewedAt != null && !(
+                defReviewedAt instanceof Date && !isNaN(defReviewedAt)
+            )) {
+                console.error("(idb-api-layer: updateTermProgress) defReviewedAt is not a valid Date object and not null")
+                return false;
+            }
 
-        existingProgress = await db.termProgress.where("termId").equals(termId);
-        if (existingProgress?.length > 0) {
-            await db.termProgress.update(
-                existingProgress[0].id,
-                {
-                    termLastReviewedAt: termReviewedAt != null ?
-                        termReviewedAt.toISOString() : existingProgress[0].termLastReviewedAt,
+            existingProgress = await db.termProgress.where("termId").equals(termId);
+            if (existingProgress?.length > 0) {
+                const termCorrectCount = (existingProgress[0].termCorrectCount) + (termCorrectIncrease ?? 0);
+                const termIncorrectCount = (existingProgress[0].termIncorrectCount) + (termIncorrectIncrease ?? 0);
+                const defCorrectCount = (existingProgress[0].defCorrectCount) + (defCorrectIncrease ?? 0);
+                const defIncorrectCount = (existingProgress[0].defIncorrectCount) + (defIncorrectIncrease ?? 0);
+
+                await db.termProgress.update(
+                    existingProgress[0].id,
+                    {
+                        termLastReviewedAt: termReviewedAt != null ?
+                            termReviewedAt.toISOString() : existingProgress[0].termLastReviewedAt,
+                        termReviewCount: termReviewedAt != null ?
+                            (existingProgress[0]?.termReviewCount ?? 0) + 1 :
+                            existingProgress[0]?.termReviewCount,
+                        defLastReviewedAt: defReviewedAt != null ?
+                            defReviewedAt.toISOString() : existingProgress[0].defLastReviewedAt,
+                        defReviewCount: defReviewedAt != null ?
+                            (existingProgress[0]?.defReviewCount ?? 0) + 1 :
+                            existingProgress[0]?.defReviewCount,
+                        termLeitnerSystemBox: termLeitnerSystemBox ?? existingProgress[0].termLeitnerSystemBox,
+                        defLeitnerSystemBox: defLeitnerSystemBox ?? existingProgress[0].defLeitnerSystemBox,
+                        termCorrectCount: termCorrectCount,
+                        termIncorrectCount: termIncorrectCount,
+                        defCorrectCount: defCorrectCount,
+                        defIncorrectCount: defIncorrectCount
+                    }
+                );
+
+                await db.termProgressHistory.add({
+                    termId: termId,
+                    timestamp: (new Date()).toISOString(),
+                    termCorrectCount: termCorrectCount,
+                    termIncorrectCount: termIncorrectCount,
+                    defCorrectCount: defCorrectCount,
+                    defIncorrectCount: defIncorrectCount
+                })
+            } else {
+                const newProgressId = await db.termProgress.add({
+                    termId: termId,
+                    termFirstReviewedAt: termReviewedAt?.toISOString(),
+                    termLastReviewedAt: termReviewedAt?.toISOString(),
                     termReviewCount: termReviewedAt != null ?
-                        (existingProgress[0]?.termReviewCount ?? 0) + 1 :
-                        existingProgress[0]?.termReviewCount,
-                    defLastReviewedAt: defReviewedAt != null ?
-                        defReviewedAt.toISOString() : existingProgress[0].defLastReviewedAt,
+                        1 : 0,
+                    defFirstReviewedAt: defReviewedAt?.toISOString(),
+                    defLastReviewedAt: defReviewedAt?.toISOString(),
                     defReviewCount: defReviewedAt != null ?
-                        (existingProgress[0]?.defReviewCount ?? 0) + 1 :
-                        existingProgress[0]?.defReviewCount,
-                    termLeitnerSystemBox: termLeitnerSystemBox ?? existingProgress[0].termLeitnerSystemBox,
-                    defLeitnerSystemBox: defLeitnerSystemBox ?? existingProgress[0].defLeitnerSystemBox,
-                    termCorrectCount: (existingProgress[0].termCorrectCount) + (termCorrectIncrease ?? 0),
-                    termIncorrectCount: (existingProgress[0].termIncorrectCount) + (termIncorrectIncrease ?? 0),
-                    defCorrectCount: (existingProgress[0].defCorrectCount) + (defCorrectIncrease ?? 0),
-                    defIncorrectCount: (existingProgress[0].defIncorrectCount) + (defIncorrectIncrease ?? 0)
-                }
-            );
-            return existingProgress[0].id;
-        } else {
-            const newProgressId = await db.termProgress.add({
-                termId: termId,
-                termFirstReviewedAt: termReviewedAt?.toISOString(),
-                termLastReviewedAt: termReviewedAt?.toISOString(),
-                termReviewCount: termReviewedAt != null ?
-                    1 : 0,
-                defFirstReviewedAt: defReviewedAt?.toISOString(),
-                defLastReviewedAt: defReviewedAt?.toISOString(),
-                defReviewCount: defReviewedAt != null ?
-                    1 : 0,
-                termLeitnerSystemBox: termLeitnerSystemBox,
-                defLeitnerSystemBox: defLeitnerSystemBox,
-                termCorrectCount: termCorrectIncrease ?? 0,
-                termIncorrectCount: termIncorrectIncrease ?? 0,
-                defCorrectCount: defCorrectIncrease ?? 0,
-                defIncorrectCount: defIncorrectIncrease ?? 0
-            });
-            return newProgressId;
-        }
+                        1 : 0,
+                    termLeitnerSystemBox: termLeitnerSystemBox,
+                    defLeitnerSystemBox: defLeitnerSystemBox,
+                    termCorrectCount: termCorrectIncrease ?? 0,
+                    termIncorrectCount: termIncorrectIncrease ?? 0,
+                    defCorrectCount: defCorrectIncrease ?? 0,
+                    defIncorrectCount: defIncorrectIncrease ?? 0
+                });
+
+                await db.termProgressHistory.add({
+                    termId: termId,
+                    timestamp: (new Date()).toISOString(),
+                    termCorrectCount: termCorrectIncrease ?? 0,
+                    termIncorrectCount: termIncorrectIncrease ?? 0,
+                    defCorrectCount: defCorrectIncrease ?? 0,
+                    defIncorrectCount: defIncorrectIncrease ?? 0
+                });
+            }
+        })
     },
     getTopConfusionPairs: async function (termId, resolveProps) {
         const confusionPairs = db.termConfusionPairs
