@@ -101,7 +101,10 @@ export default {
         }
 
         if (resolveProps?.progress) {
-            term.progress = db.termProgress.where("termId").equals(termId).toArray()?.[0];
+            term.progress = await db.termProgress.where("termId").equals(termId).toArray()?.[0];
+        }
+        if (resolveProps?.progress) {
+            term.progressHistory = await db.termProgressHistory.where("termId").equals(termId).toArray();
         }
         if (resolveProps?.topConfusionPairs) {
             term.topConfusionPairs = await this.getTopConfusionPairs(term.id);
