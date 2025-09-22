@@ -7,8 +7,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone from GitHub
-        run: git clone https://github.com/quizfreely/docs.git
+        run: git clone https://github.com/quizfreely/idb-api-layer.git
       - name: Push to Codeberg
         run: |
-          cd docs
-          git push https://ehanahamed:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/quizfreely/docs.git --all
+          cd idb-api-layer
+          git push https://ehanahamed:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/quizfreely/idb-api-layer.git --all
