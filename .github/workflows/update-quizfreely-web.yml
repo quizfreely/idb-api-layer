@@ -14,7 +14,7 @@ jobs:
         run: |
           mkdir -p quizfreely/web/src/lib/idb-api-layer
           cd idb-api-layer/
-          cp idb-api-layer.js db.js LICENSE ../quizfreely/web/src/lib/idb-api-layer/
+          cp idb-api-layer.js db.js images.js LICENSE ../quizfreely/web/src/lib/idb-api-layer/
       - name: Commit & push to quizfreely/quizfreely (gh)
         run: |
           cd quizfreely
