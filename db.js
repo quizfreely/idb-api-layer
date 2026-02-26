@@ -155,4 +155,7 @@ db.version(13).stores({
 db.version(14).stores({
     termProgressHistory: "++id, timestamp, termId, termCorrectCount, termIncorrectCount, defCorrectCount, defIncorrectCount"
 })
+db.version(15).stores({
+    termImages: "key"
+})
 export default db;
