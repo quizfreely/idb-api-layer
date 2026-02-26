@@ -92,5 +92,10 @@ export default {
         await db.terms.update(termId, updates);
 
         return blob;
+    },
+    getTermImageObjectUrl: async function (key) {
+        return URL.createObjectURL(
+            (await db.termImages.get(key)).blob
+        );
     }
 }
