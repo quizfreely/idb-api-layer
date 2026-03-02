@@ -151,21 +151,23 @@ export default {
 
         return term;
     },
-    createStudyset: async function ({ title }) {
+    createStudyset: async function ({ title, draft }) {
         const rnISOString = (new Date()).toISOString();
         const newId = await db.studysets.add({
             title: isTitleValid(title) ?
                 title : "Untitled Studyset",
+            draft,
             createdAt: rnISOString,
             updatedAt: rnISOString
         });
         return newId;
     },
-    updateStudyset: async function ({ id, title }) {
+    updateStudyset: async function ({ id, title, draft }) {
         const rnISOString = (new Date()).toISOString();
         await db.studysets.update(id, {
             title: isTitleValid(title) ?
                 title : "Untitled Studyset",
+            draft,
             updatedAt: rnISOString
         });
     },
