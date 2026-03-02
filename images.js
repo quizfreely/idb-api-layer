@@ -97,5 +97,8 @@ export default {
         return URL.createObjectURL(
             (await db.termImages.get(key)).blob
         );
+    },
+    deleteTermImages: async function (keys) {
+        await db.termImages.bulkDelete(keys);
     }
 }

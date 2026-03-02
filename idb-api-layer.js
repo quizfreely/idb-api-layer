@@ -203,13 +203,25 @@ export default {
         }
     },
     deleteTerms: async function (deleteTermIDs) {
+        const terms = await db.terms.bulkGet(deleteTermIDs);
+        const keys = [];
+        terms.forEach(term => {
+            if (term.termImageKey != null) {
+                keys.push(term.termImageKey);
+            }
+            if (term.defImageKey != null) {
+                keys.push(term.defImageKey);
+            }
+        })
+        await idbLayerImg.deleteTermImages(keys);
+        await db.termProgress.where("termId").anyOf(deleteTermIDs).delete();
         await db.terms.bulkDelete(deleteTermIDs);
     },
     deleteStudyset: async function (id) {
-        const termIds = await db.terms.where("studysetId").equals(id).primaryKeys(); /* get term IDs using studyset ID */
-        await db.termProgress.where("termId").anyOf(termIds).delete(); /* delete progress using term IDs */
-        await db.terms.where("studysetId").equals(id).delete(); /* delete terms using studyset ID */
-        await db.studysets.delete(id); /* delete studyset */
+        await this.deleteTerms(
+            await db.terms.where("studysetId").equals(id).primaryKeys()
+        );
+        await db.studysets.delete(id);
     },
     updateTermProgress: async function (termProgressArray) {
         for (const {
