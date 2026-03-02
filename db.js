@@ -158,4 +158,11 @@ db.version(14).stores({
 db.version(15).stores({
     termImages: "++key"
 })
+db.version(16).stores({
+    studysets: '++id, title, updatedAt, [updatedAt+draft]'
+}).upgrade(async tx => {
+    await tx.studysets.toCollection().modify(studyset => {
+        studyset.draft = false;
+    });
+})
 export default db;
