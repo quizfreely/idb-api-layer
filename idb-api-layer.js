@@ -319,7 +319,7 @@ export default {
     },
     recordConfusionPairs: async function (confusionPairs) {
         for (const confusionPairInput of confusionPairs) {
-            if confusionPairInput.termId == confusionPairInput.confusedTermId {
+            if (confusionPairInput.termId == confusionPairInput.confusedTermId) {
                 console.log("Skipped confusion pair with same term & confused term ID when recording confusion pairs");
                 continue;
             }

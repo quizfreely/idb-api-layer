@@ -157,9 +157,6 @@ db.version(14).stores({
 })
 db.version(15).stores({
     termImages: "[termId+defSide], termId"
-})
-db.version(16).stores({
-    studysets: '++id, title, updatedAt, [updatedAt+draft]'
 }).upgrade(async tx => {
     await tx.studysets.toCollection().modify(studyset => {
         studyset.draft = false;
