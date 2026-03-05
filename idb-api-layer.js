@@ -88,21 +88,9 @@ export default {
                             this.getTopReverseConfusionPairs(term.id)
                         );
                     }
-                    if (resolveProps?.termImageUrl) {
-                        if (term.termImageKey == null) {
-                            term.termImageUrl = null;
-                        } else {
-                            indicies.termImageUrl = promises.length;
-                            promises.push(idbLayerImg.getTermImageObjectUrl(term.termImageKey));
-                        }
-                    }
-                    if (resolveProps?.defImageUrl) {
-                        if (term.defImageKey == null) {
-                            term.defImageUrl = null;
-                        } else {
-                            indicies.defImageUrl = promises.length;
-                            promises.push(idbLayerImg.getTermImageObjectUrl(term.defImageKey));
-                        }
+                    if (resolveProps?.termDefImages) {
+                        indicies.termDefImages = promises.length;
+                        promises.push(idbLayerImg.getTermDefImageObjectUrls(term.id));
                     }
                     const results = await Promise.all(promises);
                     if (resolveProps?.progress) {
@@ -117,11 +105,8 @@ export default {
                     if (resolveProps?.topReverseConfusionPairs) {
                         term.topReverseConfusionPairs = results[indicies.topReverseConfusionPairs];
                     }
-                    if (resolveProps?.termImageUrl && term.termImageKey != null) {
-                        term.termImageUrl = results[indicies.termImageUrl];
-                    }
-                    if (resolveProps?.defImageUrl && term.defImageKey != null) {
-                        term.defImageUrl = results[indicies.defImageUrl];
+                    if (resolveProps?.termDefImages) {
+                        term.termDefImages = results[indicies.termDefImages];
                     }
                 })
             );
@@ -205,17 +190,7 @@ export default {
         }
     },
     deleteTerms: async function (deleteTermIDs) {
-        const terms = await db.terms.bulkGet(deleteTermIDs);
-        const keys = [];
-        terms.forEach(term => {
-            if (term.termImageKey != null) {
-                keys.push(term.termImageKey);
-            }
-            if (term.defImageKey != null) {
-                keys.push(term.defImageKey);
-            }
-        })
-        await idbLayerImg.deleteTermImages(keys);
+        await idbLayerImg.deleteTermImages(deleteTermIDs);
         await db.termProgress.where("termId").anyOf(deleteTermIDs).delete();
         await db.terms.bulkDelete(deleteTermIDs);
     },

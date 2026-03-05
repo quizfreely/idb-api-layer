@@ -156,7 +156,7 @@ db.version(14).stores({
     termProgressHistory: "++id, timestamp, termId, termCorrectCount, termIncorrectCount, defCorrectCount, defIncorrectCount"
 })
 db.version(15).stores({
-    termImages: "++key"
+    termImages: "[termId+defSide], termId"
 })
 db.version(16).stores({
     studysets: '++id, title, updatedAt, [updatedAt+draft]'
