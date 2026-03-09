@@ -5,16 +5,16 @@
  * https://codeberg.org/quizfreely/idb-api-layer
  * https://github.com/quizfreely/idb-api-layer
  */
-import db from "./db.js";
+import { db } from "./db.js";
 
-export default {
+export const idbLayerImg = {
     processImage: function (file, maxWidth, maxHeight, quality) {
         return new Promise((resolve, reject) => {
             const img = new Image();
             const reader = new FileReader();
 
             reader.onload = (e) => {
-                img.src = e.target.result;
+                img.src = e.target!.result as string;
             };
 
             img.onload = () => {
@@ -79,7 +79,11 @@ export default {
         const newKey = await db.images.add({ blob: blob });
 
         const rnISOString = (new Date()).toISOString();
-        let changes = {
+        let changes: {
+            termImageKey?: number
+            defImageKey?: number
+            updatedAt: string
+        } = {
             updatedAt: rnISOString
         };
         if (defSide) {
@@ -109,7 +113,11 @@ export default {
         }
 
         const rnISOString = (new Date()).toISOString();
-        let changes = {
+        let changes: {
+            termImageKey?: number
+            defImageKey?: number
+            updatedAt: string
+        } = {
             updatedAt: rnISOString
         };
         if (defSide) {

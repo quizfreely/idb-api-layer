@@ -5,9 +5,7 @@
  * https://codeberg.org/quizfreely/idb-api-layer
  * https://github.com/quizfreely/idb-api-layer
  */
-
-import Dexie from 'dexie';
-
+import { Dexie } from "dexie";
 const db = new Dexie("quizfreelydata");
 db.version(5).stores({
     studysets: '++id, title',
@@ -27,7 +25,6 @@ db.version(6).stores({
     for (const studyset of oldStudysets) {
         if (studyset?.data?.terms != null && studyset.data.terms.length > 0) {
             let sortOrder = 0;
-
             for (const [term, def] of studyset.data.terms) {
                 await tx.table("terms").add({
                     term: term,
@@ -37,12 +34,9 @@ db.version(6).stores({
                     created_at: studyset.updated_at,
                     updated_at: studyset.updated_at
                 });
-
                 sortOrder++;
             }
-
             delete studyset.data;
-
             await tx.table("studysets").put(studyset);
         }
     }
@@ -82,12 +76,12 @@ db.version(9).stores({
         "termCorrectCount, termIncorrectCount, defCorrectCount, defIncorrectCount",
     termConfusionPairs: "++id, termId, confusedTermId, answeredWith, confusedCount, lastConfusedAt",
     practiceTests: "++id, timestamp, studysetId, questionsCorrect, questionsTotal"
-}).upgrade(async tx => {
-    await tx.studysets.toCollection().modify(studyset => {
+}).upgrade(async (tx) => {
+    await tx.table("studysets").toCollection().modify(studyset => {
         studyset.updatedAt = studyset.updated_at;
         studyset.updated_at = undefined;
     });
-    await tx.terms.toCollection().modify(term => {
+    await tx.table("terms").toCollection().modify(term => {
         term.studysetId = term.studyset_id;
         term.studyset_id = undefined;
         term.sortOrder = term.sort_order;
@@ -97,9 +91,9 @@ db.version(9).stores({
         term.updatedAt = term.updated_at;
         term.updated_at = undefined;
     });
-    const oldTermProgress = await tx.term_progress.toArray();
+    const oldTermProgress = await tx.table("term_progress").toArray();
     for (const row of oldTermProgress) {
-        await tx.termProgress.add({
+        await tx.table("termProgress").add({
             id: row.id,
             studysetId: row.studyset_id,
             termFirstReviewedAt: row.term_first_reviewed_at,
@@ -114,9 +108,9 @@ db.version(9).stores({
             defIncorrectCount: row.def_incorrect_count
         });
     }
-    const oldTermConfusionPairs = await tx.term_confusion_pairs.toArray();
+    const oldTermConfusionPairs = await tx.table("term_confusion_pairs").toArray();
     for (const row of oldTermConfusionPairs) {
-        await tx.termConfusionPairs.add({
+        await tx.table("termConfusionPairs").add({
             id: row.id,
             termId: row.term_id,
             confusedTermId: row.confused_term_id,
@@ -125,9 +119,9 @@ db.version(9).stores({
             lastConfusedAt: row.last_confused_at
         });
     }
-    const oldPracticeTests = await tx.practice_tests.toArray();
+    const oldPracticeTests = await tx.table("practice_tests").toArray();
     for (const row of oldPracticeTests) {
-        await tx.practiceTests.add({
+        await tx.table("practiceTests").add({
             id: row.id,
             timestamp: row.timestamp,
             studysetId: row.studyset_id,
@@ -136,30 +130,30 @@ db.version(9).stores({
             questions: row.questions
         });
     }
-})
+});
 db.version(10).stores({
     term_progress: null,
     term_confusion_pairs: null,
     practice_tests: null
-})
+});
 db.version(11).stores({
     termConfusionPairs: "++id, termId, confusedTermId, [termId+confusedTermId], answeredWith, confusedCount, lastConfusedAt"
-})
+});
 db.version(12).stores({
     termConfusionPairs: "++id, termId, confusedTermId, [termId+confusedTermId], " +
         "answeredWith, confusedCount, [termId+confusedCount], [confusedTermId+confusedCount], lastConfusedAt"
-})
+});
 db.version(13).stores({
     terms: "++id, studysetId, sortOrder, [studysetId+sortOrder], createdAt, updatedAt"
-})
+});
 db.version(14).stores({
     termProgressHistory: "++id, timestamp, termId, termCorrectCount, termIncorrectCount, defCorrectCount, defIncorrectCount"
-})
+});
 db.version(15).stores({
     images: "++key"
-}).upgrade(async tx => {
-    await tx.studysets.toCollection().modify(studyset => {
+}).upgrade(async (tx) => {
+    await tx.table("studysets").toCollection().modify(studyset => {
         studyset.draft = false;
     });
-})
-export default db;
+});
+export { db };
