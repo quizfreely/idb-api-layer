@@ -1,6 +1,6 @@
 {
   "name": "@quizfreely/idb-api-layer",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "license": "GPL-3.0-or-later",
   "author": "Ehan Ahamed",
   "type": "module",
