@@ -29,10 +29,11 @@ jobs:
         AWS_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_DEV_SECRET_ACCESS_KEY }}
         AWS_DEFAULT_REGION: 'garage'
         AWS_ENDPOINT_URL: 'http://server.quizfreely.org:3900'
+        FAILED: ${{ failure() }}
       run: |
         REPORT_DIR='idb-api-layer/tests/run-${{ github.run_id }}-${{ github.run_attempt }}'
         aws s3 cp playwright-report s3://dev/$REPORT_DIR/ --recursive
-        if [[ "${{ failure() }}" == "true" ]]; then
+        if [[ "$FAILED" == "true" ]]; then
           echo "### ✅ Test Report" >> $GITHUB_STEP_SUMMARY
         else
           echo "### ❌ Test Report" >> $GITHUB_STEP_SUMMARY
