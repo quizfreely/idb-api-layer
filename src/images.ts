@@ -8,7 +8,7 @@
 import { db } from "./db.js";
 
 export const idbLayerImg = {
-    processImage: function (file, maxWidth, maxHeight, quality) {
+    processImage: function (file: Blob, maxWidth: number, maxHeight: number, quality?: number): Promise<Blob> {
         return new Promise((resolve, reject) => {
             const img = new Image();
             const reader = new FileReader();
@@ -38,6 +38,9 @@ export const idbLayerImg = {
                 canvas.width = width;
                 canvas.height = height;
 
+                if (ctx == null) {
+                    return reject(new Error("canvas.getContext(\"2d\") returned null"));
+                }
                 ctx.drawImage(img, 0, 0, width, height);
 
                 canvas.toBlob(
@@ -53,7 +56,7 @@ export const idbLayerImg = {
             reader.readAsDataURL(file);
         });
     },
-    processAndUpdateTermImage: async function (termId, defSide, file) {
+    processAndUpdateTermImage: async function (termId: number, defSide: boolean, file: Blob) {
         const MAX_WIDTH = 1200;
         const MAX_HEIGHT = 1200;
         const QUALITY = 0.8;
@@ -95,7 +98,7 @@ export const idbLayerImg = {
 
         return blob;
     },
-    removeTermImage: async function (termId, defSide) {
+    removeTermImage: async function (termId: number, defSide: boolean) {
         if (defSide !== true && defSide != false) {
             console.error("processAndUpdateTermImage: defSide param must be a boolean");
             return false;
@@ -121,18 +124,18 @@ export const idbLayerImg = {
             updatedAt: rnISOString
         };
         if (defSide) {
-            changes.defImageKey = null;
+            changes.defImageKey = undefined;
         } else {
-            changes.termImageKey = null;
+            changes.termImageKey = undefined;
         }
         await db.terms.update(termId, changes);
         return true;
     },
-    getImageObjectUrl: async function (key) {
+    getImageObjectUrl: async function (key: number) {
         const image = await db.images.get(key);
         return image === undefined ? null : URL.createObjectURL(image.blob);
     },
-    deleteImages: async function (keys) {
+    deleteImages: async function (keys: number[]) {
         await db.images.bulkDelete(keys);
     }
 }

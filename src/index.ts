@@ -6,10 +6,10 @@
  * https://github.com/quizfreely/idb-api-layer
  */
 import Dexie from 'dexie';
-import { db } from "./db";
+import { db, Term, TermConfusionPair, TermProgress, TermProgressHistory } from "./db";
 import { idbLayerImg } from "./images";
 
-function isTitleValid(newTitle) {
+function isTitleValid(newTitle: string) {
     return (
         newTitle.length > 0 &&
         newTitle.length < 9000 &&
@@ -22,10 +22,23 @@ function isTitleValid(newTitle) {
     );
 }
 
+type StudysetResolveProps = {
+    terms?: boolean | TermResolveProps;
+    practiceTests?: boolean;
+}
+type TermResolveProps = {
+    progress?: boolean;
+    progressHistory?: boolean;
+    topConfusionPairs?: boolean;
+    topReverseConfusionPairs?: boolean;
+    termImageUrl?: boolean;
+    defImageUrl?: boolean;
+}
+
 export * from "./db"
 export * from "./images"
 export const idbApiLayer = {
-    getStudysetById: async function (id, resolveProps) {
+    getStudysetById: async function (id: number, resolveProps?: StudysetResolveProps) {
         const studysets = await db.studysets.where("id").equals(id).toArray();
         if (studysets.length == 0) {
             return null;
@@ -34,7 +47,7 @@ export const idbApiLayer = {
         if (resolveProps?.terms) {
             studysets[0].terms = await this.getTermsByStudysetId(
                 id,
-                resolveProps.terms
+                resolveProps.terms === true ? undefined : resolveProps.terms
             );
         }
         if (resolveProps?.practiceTests) {
@@ -48,7 +61,7 @@ export const idbApiLayer = {
 
         return studysets[0];
     },
-    getTermsByStudysetId: async function (studysetId, resolveProps) {
+    getTermsByStudysetId: async function (studysetId: number, resolveProps?: TermResolveProps) {
         const terms = await db.terms
             .where("[studysetId+sortOrder]")
             .between(
@@ -64,75 +77,55 @@ export const idbApiLayer = {
             resolveProps?.termImageUrl ||
             resolveProps?.defImageUrl
         ) {
-            await Promise.all(
-                terms.map(async term => {
-                    let indicies: {
-                        progress?: number
-                        progressHistory?: number
-                        topConfusionPairs?: number
-                        topReverseConfusionPairs?: number
-                        termImageUrl?: number
-                        defImageUrl?: number
-                    } = {};
-                    let promises = [];
-                    if (resolveProps?.progress) {
-                        indicies.progress = promises.length;
-                        promises.push(
-                            db.termProgress.where("termId").equals(term.id).toArray()
-                        );
-                    }
-                    if (resolveProps?.progressHistory) {
-                        indicies.progressHistory = promises.length;
-                        promises.push(
-                            db.termProgressHistory.where("termId").equals(term.id).toArray()
-                        );
-                    }
-                    if (resolveProps?.topConfusionPairs) {
-                        indicies.topConfusionPairs = promises.length;
-                        promises.push(
-                            this.getTopConfusionPairs(term.id)
-                        );
-                    }
-                    if (resolveProps?.topReverseConfusionPairs) {
-                        indicies.topReverseConfusionPairs = promises.length;
-                        promises.push(
-                            this.getTopReverseConfusionPairs(term.id)
-                        );
-                    }
-                    if (resolveProps?.termImageUrl && term.termImageKey != null) {
-                        indicies.termImageUrl = promises.length;
-                        promises.push(idbLayerImg.getImageObjectUrl(term.termImageKey));
-                    }
-                    if (resolveProps?.defImageUrl && term.defImageKey != null) {
-                        indicies.defImageUrl = promises.length;
-                        promises.push(idbLayerImg.getImageObjectUrl(term.defImageKey));
-                    }
-                    const results = await Promise.all(promises);
-                    if (resolveProps?.progress) {
-                        term.progress = results[indicies.progress]?.[0] ?? null;
-                    }
-                    if (resolveProps?.progressHistory) {
-                        term.progressHistory = results[indicies.progressHistory];
-                    }
-                    if (resolveProps?.topConfusionPairs) {
-                        term.topConfusionPairs = results[indicies.topConfusionPairs];
-                    }
-                    if (resolveProps?.topReverseConfusionPairs) {
-                        term.topReverseConfusionPairs = results[indicies.topReverseConfusionPairs];
-                    }
-                    if (resolveProps?.termImageUrl) {
-                        term.termImageUrl = term.termImageKey == null ? null : results[indicies.termImageUrl];
-                    }
-                    if (resolveProps?.defImageUrl) {
-                        term.defImageUrl = term.defImageKey == null ? null : results[indicies.defImageUrl];
-                    }
-                })
-            );
+            await Promise.all(terms.map(async term => {
+                const promises: {
+                    progress?: Promise<TermProgress[]>;
+                    progressHistory?: Promise<TermProgressHistory[]>;
+                    topConfusionPairs?: Promise<TermConfusionPair[]>;
+                    topReverseConfusionPairs?: Promise<TermConfusionPair[]>;
+                    termImageUrl?: Promise<string | null>;
+                    defImageUrl?: Promise<string | null>;
+                } = {};
+                if (resolveProps?.progress) {
+                    promises.progress = db.termProgress.where("termId").equals(term.id).toArray();
+                }
+                if (resolveProps?.progressHistory) {
+                    promises.progressHistory = db.termProgressHistory.where("termId").equals(term.id).toArray();
+                }
+                if (resolveProps?.topConfusionPairs) {
+                    promises.topConfusionPairs = this.getTopConfusionPairs(term.id);
+                }
+                if (resolveProps?.topReverseConfusionPairs) {
+                    promises.topReverseConfusionPairs = this.getTopReverseConfusionPairs(term.id);
+                }
+                if (resolveProps?.termImageUrl && term.termImageKey != null) {
+                    promises.termImageUrl = idbLayerImg.getImageObjectUrl(term.termImageKey);
+                }
+                if (resolveProps?.defImageUrl && term.defImageKey != null) {
+                    promises.defImageUrl = idbLayerImg.getImageObjectUrl(term.defImageKey);
+                }
+                const results = await Promise.all(Object.entries(promises).map(async ([k, p]) => [k, await p]));
+                const resolved = Object.fromEntries(results) as {
+                    progress?: TermProgress[];
+                    progressHistory?: TermProgressHistory[];
+                    topConfusionPairs?: TermConfusionPair[];
+                    topReverseConfusionPairs?: TermConfusionPair[];
+                    termImageUrl?: string;
+                    defImageUrl?: string;
+                };
+                term.progress = resolved.progress?.[0] ?? undefined;
+                term.progressHistory = resolved.progressHistory;
+                term.topConfusionPairs = resolved.topConfusionPairs;
+                term.topReverseConfusionPairs = resolved.topReverseConfusionPairs;
+                term.termImageUrl = term.termImageKey == null ? null : resolved.termImageUrl;
+                term.defImageUrl = term.defImageKey == null ? null : resolved.defImageUrl;
+            })
+        );
         }
 
         return terms;
     },
-    getTermById: async function (termId, resolveProps) {
+    getTermById: async function (termId: number, resolveProps?: TermResolveProps) {
         let term = (await db.terms.where("id").equals(termId).toArray())?.[0];
         if (term == null) {
             console.log("(idbApiLayer.getTermById) term not found")
@@ -160,7 +153,7 @@ export const idbApiLayer = {
 
         return term;
     },
-    createStudyset: async function ({ title, draft }) {
+    createStudyset: async function ({ title, draft }: { title: string, draft: boolean }) {
         const rnISOString = (new Date()).toISOString();
         const newId = await db.studysets.add({
             title: isTitleValid(title) || (draft && title == "") ?
@@ -171,7 +164,7 @@ export const idbApiLayer = {
         });
         return newId;
     },
-    updateStudyset: async function ({ id, title, draft }) {
+    updateStudyset: async function ({ id, title, draft }: { id: number, title: string, draft: boolean }) {
         const rnISOString = (new Date()).toISOString();
         await db.studysets.update(id, {
             title: isTitleValid(title) || (draft && title == "") ?
@@ -180,9 +173,9 @@ export const idbApiLayer = {
             updatedAt: rnISOString
         });
     },
-    createTerms: async function (studysetId, newTerms) {
+    createTerms: async function (studysetId: number, newTerms: Omit<Term, "id">[]) {
         const rnISOString = (new Date()).toISOString();
-        let bulkAddNewTerms = [];
+        let bulkAddNewTerms: Omit<Term, "id">[] = [];
         newTerms.forEach(term => {
             bulkAddNewTerms.push({
                 term: term.term,
@@ -195,9 +188,12 @@ export const idbApiLayer = {
         })
         return await db.terms.bulkAdd(bulkAddNewTerms);
     },
-    updateTerms: async function (terms) {
+    updateTerms: async function (terms: Term[]) {
         const rnISOString = (new Date()).toISOString();
-        let bulkUpdateTerms = [];
+        let bulkUpdateTerms: {
+            key: number,
+            changes: Omit<Term, "id" | "studysetId" | "createdAt">
+        }[] = [];
         terms.forEach(term => {
             bulkUpdateTerms.push({
                 key: term.id,
@@ -213,14 +209,14 @@ export const idbApiLayer = {
             await db.terms.bulkUpdate(bulkUpdateTerms);
         }
     },
-    deleteTerms: async function (deleteTermIDs) {
+    deleteTerms: async function (deleteTermIDs: number[]) {
         const terms = await db.terms.bulkGet(deleteTermIDs);
-        let imageKeysToDelete = [];
+        let imageKeysToDelete: number[] = [];
         terms.forEach(t => {
-            if (t.termImageKey != null) {
+            if (t?.termImageKey != null) {
                 imageKeysToDelete.push(t.termImageKey);
             }
-            if (t.defImageKey != null) {
+            if (t?.defImageKey != null) {
                 imageKeysToDelete.push(t.defImageKey);
             }
         })
@@ -228,13 +224,13 @@ export const idbApiLayer = {
         await db.termProgress.where("termId").anyOf(deleteTermIDs).delete();
         await db.terms.bulkDelete(deleteTermIDs);
     },
-    deleteStudyset: async function (id) {
+    deleteStudyset: async function (id: number) {
         await this.deleteTerms(
             await db.terms.where("studysetId").equals(id).primaryKeys()
         );
         await db.studysets.delete(id);
     },
-    updateTermProgress: async function (termProgressArray) {
+    updateTermProgress: async function (termProgressArray: any) {
         for (const {
             termId,
             termReviewedAt, defReviewedAt,
@@ -309,7 +305,7 @@ export const idbApiLayer = {
             }
         }
     },
-    getTopConfusionPairs: async function (termId, resolveProps) {
+    getTopConfusionPairs: async function (termId: any, resolveProps?: any) {
         const confusionPairs = await db.termConfusionPairs
             .where("[termId+confusedCount]")
             .between(
@@ -323,13 +319,17 @@ export const idbApiLayer = {
         if (resolveProps?.confusedTerm) {
             await Promise.all(
                 confusionPairs.map(async confusionPair => {
+                    if (typeof confusionPair.confusedTermId === "string") {
+                        console.error("getTopConfusionPairs: confusedTermId is a string (mabye a UUID), can't resolve confusedTerm");
+                        return;
+                    }
                     confusionPair.confusedTerm = await this.getTermById(confusionPair.confusedTermId, resolveProps?.confusedTerm);
                 })
             );
         }
         return confusionPairs;
     },
-    getTopReverseConfusionPairs: async function (confusedTermId, resolveProps) {
+    getTopReverseConfusionPairs: async function (confusedTermId: any, resolveProps?: any) {
         const confusionPairs = await db.termConfusionPairs
             .where("[confusedTermId+confusedCount]")
             .between(
@@ -343,13 +343,17 @@ export const idbApiLayer = {
         if (resolveProps?.term) {
             await Promise.all(
                 confusionPairs.map(async confusionPair => {
+                    if (typeof confusionPair.termId === "string") {
+                        console.error("getTopReverseConfusionPairs: termId is a string (mabye a UUID), can't resolve term");
+                        return;
+                    }
                     confusionPair.term = await this.getTermById(confusionPair.termId, resolveProps?.term);
                 })
             );
         }
         return confusionPairs;
     },
-    recordConfusionPairs: async function (confusionPairs) {
+    recordConfusionPairs: async function (confusionPairs: any) {
         for (const confusionPairInput of confusionPairs) {
             if (confusionPairInput.termId == confusionPairInput.confusedTermId) {
                 console.log("Skipped confusion pair with same term & confused term ID when recording confusion pairs");
@@ -384,7 +388,7 @@ export const idbApiLayer = {
         }
         return true;
     },
-    recordPracticeTest: async function (practiceTest) {
+    recordPracticeTest: async function (practiceTest: any) {
         /* returns id after inserting */
         return await db.practiceTests.add(practiceTest);
     }
