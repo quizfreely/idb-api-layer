@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test('create, view, update, & delete studyset', async ({ page }) => {
   await page.goto('/');
 
-  page.evaluate(async () => {
+  await page.evaluate(async () => {
     const id = await window.idbApiLayer.createStudyset({
       title: "",
       draft: true

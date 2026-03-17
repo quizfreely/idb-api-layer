@@ -22,7 +22,7 @@ jobs:
     - name: Run Playwright tests
       run: npx playwright test
     - name: Upload HTML Report
-      shell: bash
+      if: always()
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.STORAGE_DEV_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_DEV_SECRET_ACCESS_KEY }}
