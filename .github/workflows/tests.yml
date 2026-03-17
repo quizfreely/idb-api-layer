@@ -29,6 +29,6 @@ jobs:
         AWS_DEFAULT_REGION: 'garage'
         AWS_ENDPOINT_URL: 'http://server.quizfreely.org:3900'
       run: |
-        REPORT_DIR='idb-api-layer/run-${{ github.run_id }}-${{ github.run_attempt }}'
+        REPORT_DIR='idb-api-layer/tests/run-${{ github.run_id }}-${{ github.run_attempt }}'
         aws s3 cp playwright-report s3://dev/$REPORT_DIR/ --recursive
         echo "::notice title=Test Report url::https://dev.static.quizfreely.org/$REPORT_DIR/index.html"
