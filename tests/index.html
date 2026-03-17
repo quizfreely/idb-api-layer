@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>IDB API Layer Tests</title>
+    </head>
+    <body>
+        <script type="module">
+            import { idbApiLayer, idbLayerImg, db } from "../dist/index";
+            window.idbApiLayer = idbApiLayer;
+            window.idbLayerImg = idbLayerImg;
+            window.db = db;
+        </script>
+    </body>
+</html>
