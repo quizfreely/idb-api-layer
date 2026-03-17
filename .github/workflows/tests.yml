@@ -33,9 +33,5 @@ jobs:
       run: |
         REPORT_DIR='idb-api-layer/tests/run-${{ github.run_id }}-${{ github.run_attempt }}'
         aws s3 cp playwright-report s3://dev/$REPORT_DIR/ --recursive
-        if [[ "$FAILED" == "true" ]]; then
-          echo "### ✅ Test Report" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "### ❌ Test Report" >> $GITHUB_STEP_SUMMARY
-        fi
+        echo "### Test Report" >> $GITHUB_STEP_SUMMARY
         echo "View Test Report: https://dev.static.quizfreely.org/$REPORT_DIR/" >> $GITHUB_STEP_SUMMARY
