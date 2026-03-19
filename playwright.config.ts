@@ -1,12 +1,4 @@
-import { defineConfig, devices } from '@playwright/test';
-
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-// import dotenv from 'dotenv';
-// import path from 'path';
-// dotenv.config({ path: path.resolve(__dirname, '.env') });
+import { defineConfig, devices, ReporterDescription } from '@playwright/test';
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -21,9 +13,20 @@ export default defineConfig({
   //retries: process.env.CI ? 2 : 0,
   retries: 0,
   /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI == "true" ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
+  reporter: (() => {
+    const reporters: ReporterDescription[]  = [];
+    if (process.env.ENABLE_HTML_REPORTER != "false" /* default to true unless explicitly false */) {
+      reporters.push(["html", {
+        open: process.env.CI == "true" ? "never" : "on-failure"
+      }]);
+    }
+    if (process.env.ENABLE_GH_REPORTER == "true" /* default to false unless explicitly true */) {
+      reporters.push(["github"]);
+    }
+    return reporters;
+  })(),
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('')`. */

@@ -1,9 +1,6 @@
 name: Tests
 on:
-  #push:
-  #  branches: [ main ]
-  #pull_request:
-  #  branches: [ main ]
+  pull_request:
   workflow_dispatch:
 jobs:
   tests:
@@ -21,9 +18,12 @@ jobs:
       #run: npx playwright install --with-deps
       run: npx playwright install chromium
     - name: Run Playwright tests
+      env:
+        ENABLE_HTML_REPORTER: "${{ github.event_name != 'pull_request' }}"
+        ENABLE_GH_REPORTER: "true"
       run: npx playwright test
     - name: Upload HTML Report
-      if: always() #&& github.event_name != 'pull_request' && github.repository == 'quizfreely/idb-api-layer'
+      if: always() && github.event_name != 'pull_request'
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.STORAGE_DEV_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_DEV_SECRET_ACCESS_KEY }}
