@@ -52,11 +52,12 @@ test('getStudysetById with resolveProps', async ({ page }) => {
       { term: "t2", def: "d2", sortOrder: 1, createdAt: "", updatedAt: "" }
     ]);
 
+    const terms = await window.idbApiLayer.getTermsByStudysetId(id);
     await window.idbApiLayer.recordPracticeTest({
-      studysetId: id,
       timestamp: (new Date()).toISOString(),
-      questionsCorrect: 5,
-      questionsTotal: 10
+      questions: [
+        { mcq: { term: { id: terms[0].id, term: terms[0].term, def: terms[0].def }, answerWith: "DEF", correct: true, answeredIndex: 0, distractors: [] } }
+      ]
     });
 
     let fullStudyset = await window.idbApiLayer.getStudysetById(id, {
