@@ -36,9 +36,16 @@ interface Term {
     topReverseConfusionPairs?: TermConfusionPair[]
 }
 
+interface TermAtp {
+    id: number | string
+    term: string
+    def: string
+}
+
 interface PracticeTest {
     id: number
-    studysetId: number | string
+    studysetIds: (number | string)[]
+    termIds: (number | string)[]
     timestamp: string
     questionsCorrect: number
     questionsTotal: number
@@ -46,26 +53,33 @@ interface PracticeTest {
 }
 
 interface Question {
-    questionType: string
     mcq?: MCQ
-    trueFalseQuestion?: TrueFalseQuestion
+    tfq?: TFQ
+    frq?: FRQ
 }
 
 interface MCQ {
     answerWith: string
-    answeredTerm: Term
+    term: TermAtp
     correct: boolean
-    correctChoiceIndex: number
-    distractors: Term[]
-    term: Term
+    answeredIndex: number
+    distractors: TermAtp[]
 }
 
-interface TrueFalseQuestion {
+interface TFQ {
     answerWith: string
-    answeredBool: boolean
+    term: TermAtp
     correct: boolean
-    distractor: Term
-    term: Term
+    answeredBool: boolean
+    distractor?: TermAtp
+}
+
+interface FRQ {
+    answerWith: string
+    term: TermAtp
+    correct: boolean
+    userMarkedCorrect?: boolean
+    answeredString: string
 }
 
 interface TermProgress {
@@ -295,6 +309,95 @@ db.version(15).stores({
         studyset.draft = false;
     });
 })
+db.version(16).stores({
+    practiceTests: "++id, timestamp, *studysetIds, *termIds, questionsCorrect, questionsTotal"
+}).upgrade(async tx => {
+    await tx.table("practiceTests").toCollection().modify((pt: any) => {
+        const studysetIds = new Set<number | string>();
+        const termIds = new Set<number | string>();
 
-export type { Studyset, Term, PracticeTest, Question, MCQ, TrueFalseQuestion, TermProgress, TermProgressHistory, TermConfusionPair }
+        if (pt.studysetId) {
+            studysetIds.add(pt.studysetId);
+            delete pt.studysetId;
+        }
+
+        if (pt.questions && Array.isArray(pt.questions)) {
+            pt.questions = pt.questions.map((q: any) => {
+                // Strip questionType
+                delete q.questionType;
+
+                // Rename trueFalseQuestion -> tfq
+                if (q.trueFalseQuestion) {
+                    q.tfq = q.trueFalseQuestion;
+                    delete q.trueFalseQuestion;
+                }
+
+                // Helper to convert Term to TermAtp
+                const toTermAtp = (t: any): TermAtp => {
+                    if (!t) return { id: 0, term: '', def: '' };
+                    if (t.id) termIds.add(t.id);
+                    // Extract studysetId from term if possible
+                    if (t.studysetId) studysetIds.add(t.studysetId);
+                    return {
+                        id: t.id,
+                        term: t.term || '',
+                        def: t.def || ''
+                    };
+                };
+
+                if (q.mcq) {
+                    const mcq = q.mcq;
+                    let answeredIndex = 0;
+                    const correctChoiceIndex = mcq.correctChoiceIndex || 0;
+
+                    if (mcq.correct) {
+                        answeredIndex = correctChoiceIndex;
+                    } else if (mcq.answeredTerm && Array.isArray(mcq.distractors)) {
+                        const idx = mcq.distractors.findIndex((d: any) => d.id === mcq.answeredTerm.id);
+                        if (idx !== -1) {
+                            answeredIndex = idx >= correctChoiceIndex ? idx + 1 : idx;
+                        }
+                    }
+
+                    q.mcq = {
+                        answerWith: mcq.answerWith,
+                        term: toTermAtp(mcq.term || mcq.answeredTerm), // fallback to answeredTerm if term is missing
+                        correct: !!mcq.correct,
+                        answeredIndex: answeredIndex,
+                        distractors: (mcq.distractors || []).map(toTermAtp)
+                    };
+                }
+
+                if (q.tfq) {
+                    const tfq = q.tfq;
+                    q.tfq = {
+                        answerWith: tfq.answerWith,
+                        term: toTermAtp(tfq.term),
+                        correct: !!tfq.correct,
+                        answeredBool: !!tfq.answeredBool,
+                        distractor: tfq.distractor ? toTermAtp(tfq.distractor) : undefined
+                    };
+                }
+
+                if (q.frq) {
+                    const frq = q.frq;
+                    q.frq = {
+                        answerWith: frq.answerWith,
+                        term: toTermAtp(frq.term),
+                        correct: !!frq.correct,
+                        userMarkedCorrect: frq.userMarkedCorrect,
+                        answeredString: frq.answeredString || ""
+                    };
+                }
+
+                return q;
+            });
+        }
+
+        pt.studysetIds = Array.from(studysetIds);
+        pt.termIds = Array.from(termIds);
+    });
+});
+
+export type { Studyset, Term, TermAtp, PracticeTest, Question, MCQ, TFQ, FRQ, TermProgress, TermProgressHistory, TermConfusionPair }
 export { db };

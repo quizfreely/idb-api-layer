@@ -156,4 +156,86 @@ db.version(15).stores({
         studyset.draft = false;
     });
 });
+db.version(16).stores({
+    practiceTests: "++id, timestamp, *studysetIds, *termIds, questionsCorrect, questionsTotal"
+}).upgrade(async (tx) => {
+    await tx.table("practiceTests").toCollection().modify((pt) => {
+        const studysetIds = new Set();
+        const termIds = new Set();
+        if (pt.studysetId) {
+            studysetIds.add(pt.studysetId);
+            delete pt.studysetId;
+        }
+        if (pt.questions && Array.isArray(pt.questions)) {
+            pt.questions = pt.questions.map((q) => {
+                // Strip questionType
+                delete q.questionType;
+                // Rename trueFalseQuestion -> tfq
+                if (q.trueFalseQuestion) {
+                    q.tfq = q.trueFalseQuestion;
+                    delete q.trueFalseQuestion;
+                }
+                // Helper to convert Term to TermAtp
+                const toTermAtp = (t) => {
+                    if (!t)
+                        return { id: 0, term: '', def: '' };
+                    if (t.id)
+                        termIds.add(t.id);
+                    // Extract studysetId from term if possible
+                    if (t.studysetId)
+                        studysetIds.add(t.studysetId);
+                    return {
+                        id: t.id,
+                        term: t.term || '',
+                        def: t.def || ''
+                    };
+                };
+                if (q.mcq) {
+                    const mcq = q.mcq;
+                    let answeredIndex = 0;
+                    const correctChoiceIndex = mcq.correctChoiceIndex || 0;
+                    if (mcq.correct) {
+                        answeredIndex = correctChoiceIndex;
+                    }
+                    else if (mcq.answeredTerm && Array.isArray(mcq.distractors)) {
+                        const idx = mcq.distractors.findIndex((d) => d.id === mcq.answeredTerm.id);
+                        if (idx !== -1) {
+                            answeredIndex = idx >= correctChoiceIndex ? idx + 1 : idx;
+                        }
+                    }
+                    q.mcq = {
+                        answerWith: mcq.answerWith,
+                        term: toTermAtp(mcq.term || mcq.answeredTerm), // fallback to answeredTerm if term is missing
+                        correct: !!mcq.correct,
+                        answeredIndex: answeredIndex,
+                        distractors: (mcq.distractors || []).map(toTermAtp)
+                    };
+                }
+                if (q.tfq) {
+                    const tfq = q.tfq;
+                    q.tfq = {
+                        answerWith: tfq.answerWith,
+                        term: toTermAtp(tfq.term),
+                        correct: !!tfq.correct,
+                        answeredBool: !!tfq.answeredBool,
+                        distractor: tfq.distractor ? toTermAtp(tfq.distractor) : undefined
+                    };
+                }
+                if (q.frq) {
+                    const frq = q.frq;
+                    q.frq = {
+                        answerWith: frq.answerWith,
+                        term: toTermAtp(frq.term),
+                        correct: !!frq.correct,
+                        userMarkedCorrect: frq.userMarkedCorrect,
+                        answeredString: frq.answeredString || ""
+                    };
+                }
+                return q;
+            });
+        }
+        pt.studysetIds = Array.from(studysetIds);
+        pt.termIds = Array.from(termIds);
+    });
+});
 export { db };
