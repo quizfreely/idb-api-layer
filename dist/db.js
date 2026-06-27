@@ -157,17 +157,20 @@ db.version(15).stores({
     });
 });
 db.version(16).stores({
-    practiceTests: "++id, timestamp, *studysetIds, *termIds, questionsCorrect, questionsTotal"
+    practiceTests: "++id, timestamp, *studysetIds, *questionTermIds, *distractorTermIds, questionsCorrect, questionsTotal"
 }).upgrade(async (tx) => {
-    await tx.table("practiceTests").toCollection().modify((pt) => {
+    await tx.table("practiceTests").toCollection().each(async (pt) => {
         const studysetIds = new Set();
-        const termIds = new Set();
+        const questionTermIds = new Set();
+        const distractorTermIds = new Set();
         if (pt.studysetId) {
             studysetIds.add(pt.studysetId);
             delete pt.studysetId;
         }
+        let isInvalid = false;
         if (pt.questions && Array.isArray(pt.questions)) {
-            pt.questions = pt.questions.map((q) => {
+            const newQuestions = [];
+            for (let q of pt.questions) {
                 // Strip questionType
                 delete q.questionType;
                 // Rename trueFalseQuestion -> tfq
@@ -175,13 +178,18 @@ db.version(16).stores({
                     q.tfq = q.trueFalseQuestion;
                     delete q.trueFalseQuestion;
                 }
-                // Helper to convert Term to TermAtp
-                const toTermAtp = (t) => {
+                // Helper to check if term is valid
+                const isTermValid = (t) => t && (t.id != null);
+                // Helper to convert Term to TermAtp and track IDs
+                const toTermAtp = (t, isQuestion) => {
                     if (!t)
                         return { id: 0, term: '', def: '' };
-                    if (t.id)
-                        termIds.add(t.id);
-                    // Extract studysetId from term if possible
+                    if (t.id) {
+                        if (isQuestion)
+                            questionTermIds.add(t.id);
+                        else
+                            distractorTermIds.add(t.id);
+                    }
                     if (t.studysetId)
                         studysetIds.add(t.studysetId);
                     return {
@@ -192,12 +200,16 @@ db.version(16).stores({
                 };
                 if (q.mcq) {
                     const mcq = q.mcq;
-                    let answeredIndex = 0;
-                    const correctChoiceIndex = mcq.correctChoiceIndex || 0;
+                    if (!isTermValid(mcq.term)) {
+                        isInvalid = true;
+                        break;
+                    }
+                    let answeredIndex = null;
+                    const correctChoiceIndex = mcq.correctChoiceIndex ?? 0;
                     if (mcq.correct) {
                         answeredIndex = correctChoiceIndex;
                     }
-                    else if (mcq.answeredTerm && Array.isArray(mcq.distractors)) {
+                    else if (mcq.answeredTerm && isTermValid(mcq.answeredTerm) && Array.isArray(mcq.distractors)) {
                         const idx = mcq.distractors.findIndex((d) => d.id === mcq.answeredTerm.id);
                         if (idx !== -1) {
                             answeredIndex = idx >= correctChoiceIndex ? idx + 1 : idx;
@@ -205,37 +217,57 @@ db.version(16).stores({
                     }
                     q.mcq = {
                         answerWith: mcq.answerWith,
-                        term: toTermAtp(mcq.term || mcq.answeredTerm), // fallback to answeredTerm if term is missing
+                        term: toTermAtp(mcq.term, true),
                         correct: !!mcq.correct,
+                        correctChoiceIndex: correctChoiceIndex,
                         answeredIndex: answeredIndex,
-                        distractors: (mcq.distractors || []).map(toTermAtp)
+                        distractors: (mcq.distractors || []).map((d) => toTermAtp(d, false))
                     };
                 }
-                if (q.tfq) {
+                else if (q.tfq) {
                     const tfq = q.tfq;
+                    if (!isTermValid(tfq.term)) {
+                        isInvalid = true;
+                        break;
+                    }
                     q.tfq = {
                         answerWith: tfq.answerWith,
-                        term: toTermAtp(tfq.term),
+                        term: toTermAtp(tfq.term, true),
                         correct: !!tfq.correct,
                         answeredBool: !!tfq.answeredBool,
-                        distractor: tfq.distractor ? toTermAtp(tfq.distractor) : undefined
+                        distractor: tfq.distractor ? toTermAtp(tfq.distractor, false) : undefined
                     };
                 }
-                if (q.frq) {
+                else if (q.frq) {
                     const frq = q.frq;
+                    if (!isTermValid(frq.term)) {
+                        isInvalid = true;
+                        break;
+                    }
                     q.frq = {
                         answerWith: frq.answerWith,
-                        term: toTermAtp(frq.term),
+                        term: toTermAtp(frq.term, true),
                         correct: !!frq.correct,
                         userMarkedCorrect: frq.userMarkedCorrect,
                         answeredString: frq.answeredString || ""
                     };
                 }
-                return q;
-            });
+                newQuestions.push(q);
+            }
+            pt.questions = newQuestions;
         }
-        pt.studysetIds = Array.from(studysetIds);
-        pt.termIds = Array.from(termIds);
+        if (isInvalid) {
+            await tx.table("practiceTests").delete(pt.id);
+        }
+        else {
+            pt.studysetIds = Array.from(studysetIds);
+            pt.questionTermIds = Array.from(questionTermIds);
+            pt.distractorTermIds = Array.from(distractorTermIds);
+            // termIds was used in the previous (messed up) version 16 attempt,
+            // if it exists on the object we should remove it.
+            delete pt.termIds;
+            await tx.table("practiceTests").put(pt);
+        }
     });
 });
 export { db };

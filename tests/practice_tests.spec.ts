@@ -24,14 +24,14 @@ test('practice tests: recording and retrieval in studyset', async ({ page }) => 
     await window.idbApiLayer.recordPracticeTest({
         timestamp: time1,
         questions: [
-          { mcq: { term: t1, answerWith: "DEF", correct: true, answeredIndex: 0, distractors: [] } }
+          { mcq: { term: t1, answerWith: "DEF", correct: true, correctChoiceIndex: 0, answeredIndex: 0, distractors: [] } }
         ]
     });
 
     await window.idbApiLayer.recordPracticeTest({
         timestamp: time2,
         questions: [
-          { mcq: { term: t1, answerWith: "DEF", correct: false, answeredIndex: 1, distractors: [t1] } }
+          { mcq: { term: t1, answerWith: "DEF", correct: false, correctChoiceIndex: 0, answeredIndex: 1, distractors: [t1] } }
         ]
     });
 
@@ -64,10 +64,10 @@ test('practice tests: update and retrieval by term', async ({ page }) => {
         ]
     });
 
-    // Update the test to include another term
+    // Update the test to include another term as a question and another as a distractor
     await window.idbApiLayer.updatePracticeTest(pt.id, {
       questions: [
-        { tfq: { term: t1, answerWith: "DEF", correct: true, answeredBool: true } },
+        { mcq: { term: t1, answerWith: "DEF", correct: true, correctChoiceIndex: 0, answeredIndex: 0, distractors: [t2] } },
         { frq: { term: t2, answerWith: "TERM", correct: false, answeredString: "wrong" } }
       ]
     });
@@ -83,6 +83,6 @@ test('practice tests: update and retrieval by term', async ({ page }) => {
   expect(result.testsForT2).toHaveLength(1);
   expect(result.updatedPt.questionsCorrect).toBe(1);
   expect(result.updatedPt.questionsTotal).toBe(2);
-  expect(result.updatedPt.termIds).toContain(result.testsForT1[0].termIds[0]);
-  expect(result.updatedPt.termIds).toContain(result.testsForT2[0].termIds[1]);
+  expect(result.updatedPt.questionTermIds).toContain(result.testsForT1[0].questionTermIds[0]);
+  expect(result.updatedPt.distractorTermIds).toContain(result.testsForT2[0].distractorTermIds[0]);
 });
