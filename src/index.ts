@@ -393,7 +393,8 @@ export const idbApiLayer = {
             const rnISOString = (new Date()).toISOString();
             const termProgressMap = new Map<any, any>();
             const studysetIds = new Set<number | string>();
-            const termIds = new Set<number | string>();
+            const questionTermIds = new Set<number | string>();
+            const distractorTermIds = new Set<number | string>();
             let questionsCorrect = 0;
             let questionsTotal = 0;
 
@@ -405,21 +406,24 @@ export const idbApiLayer = {
                     let answerWith: string | null = null;
                     let correct = false;
 
-                    if (q.mcq && q.mcq.term) {
+                    if (q.mcq) {
+                        if (!q.mcq.term) throw new Error("MCQ question is missing term");
                         termId = q.mcq.term.id;
-                        termIds.add(termId);
-                        (q.mcq.distractors || []).forEach((d: any) => { if (d.id) termIds.add(d.id); });
+                        questionTermIds.add(termId);
+                        (q.mcq.distractors || []).forEach((d: any) => { if (d.id) distractorTermIds.add(d.id); });
                         answerWith = q.mcq.answerWith;
                         correct = !!q.mcq.correct;
-                    } else if (q.tfq && q.tfq.term) {
+                    } else if (q.tfq) {
+                        if (!q.tfq.term) throw new Error("TFQ question is missing term");
                         termId = q.tfq.term.id;
-                        termIds.add(termId);
-                        if (q.tfq.distractor?.id) termIds.add(q.tfq.distractor.id);
+                        questionTermIds.add(termId);
+                        if (q.tfq.distractor?.id) distractorTermIds.add(q.tfq.distractor.id);
                         answerWith = q.tfq.answerWith;
                         correct = !!q.tfq.correct;
-                    } else if (q.frq && q.frq.term) {
+                    } else if (q.frq) {
+                        if (!q.frq.term) throw new Error("FRQ question is missing term");
                         termId = q.frq.term.id;
-                        termIds.add(termId);
+                        questionTermIds.add(termId);
                         answerWith = q.frq.answerWith;
                         correct = !!q.frq.correct || !!q.frq.userMarkedCorrect;
                     }
@@ -466,7 +470,8 @@ export const idbApiLayer = {
             }
 
             // Fetch studysetIds for all involved terms
-            const allTerms = await db.terms.bulkGet(Array.from(termIds) as number[]);
+            const combinedTermIds = new Set([...questionTermIds, ...distractorTermIds]);
+            const allTerms = await db.terms.bulkGet(Array.from(combinedTermIds) as number[]);
             allTerms.forEach(t => { if (t?.studysetId) studysetIds.add(t.studysetId); });
 
             for (const tp of termProgressMap.values()) {
@@ -538,7 +543,8 @@ export const idbApiLayer = {
             practiceTest.questionsCorrect = questionsCorrect;
             practiceTest.questionsTotal = questionsTotal;
             practiceTest.studysetIds = Array.from(studysetIds);
-            practiceTest.termIds = Array.from(termIds);
+            practiceTest.questionTermIds = Array.from(questionTermIds);
+            practiceTest.distractorTermIds = Array.from(distractorTermIds);
             if (!practiceTest.timestamp) practiceTest.timestamp = rnISOString;
 
             const id = await db.practiceTests.add(practiceTest);
@@ -548,7 +554,8 @@ export const idbApiLayer = {
     updatePracticeTest: async function (id: number, practiceTest: any) {
         return await db.transaction('rw', [db.practiceTests, db.terms], async () => {
             const studysetIds = new Set<number | string>();
-            const termIds = new Set<number | string>();
+            const questionTermIds = new Set<number | string>();
+            const distractorTermIds = new Set<number | string>();
             let questionsCorrect = 0;
             let questionsTotal = 0;
 
@@ -557,23 +564,27 @@ export const idbApiLayer = {
                 for (const q of practiceTest.questions) {
                     if (!q) continue;
                     let correct = false;
-                    if (q.mcq && q.mcq.term) {
-                        termIds.add(q.mcq.term.id);
-                        (q.mcq.distractors || []).forEach((d: any) => { if (d.id) termIds.add(d.id); });
+                    if (q.mcq) {
+                        if (!q.mcq.term) throw new Error("MCQ question is missing term");
+                        questionTermIds.add(q.mcq.term.id);
+                        (q.mcq.distractors || []).forEach((d: any) => { if (d.id) distractorTermIds.add(d.id); });
                         correct = !!q.mcq.correct;
-                    } else if (q.tfq && q.tfq.term) {
-                        termIds.add(q.tfq.term.id);
-                        if (q.tfq.distractor?.id) termIds.add(q.tfq.distractor.id);
+                    } else if (q.tfq) {
+                        if (!q.tfq.term) throw new Error("TFQ question is missing term");
+                        questionTermIds.add(q.tfq.term.id);
+                        if (q.tfq.distractor?.id) distractorTermIds.add(q.tfq.distractor.id);
                         correct = !!q.tfq.correct;
-                    } else if (q.frq && q.frq.term) {
-                        termIds.add(q.frq.term.id);
+                    } else if (q.frq) {
+                        if (!q.frq.term) throw new Error("FRQ question is missing term");
+                        questionTermIds.add(q.frq.term.id);
                         correct = !!q.frq.correct || !!q.frq.userMarkedCorrect;
                     }
                     if (correct) questionsCorrect++;
                 }
             }
 
-            const allTerms = await db.terms.bulkGet(Array.from(termIds) as number[]);
+            const combinedTermIds = new Set([...questionTermIds, ...distractorTermIds]);
+            const allTerms = await db.terms.bulkGet(Array.from(combinedTermIds) as number[]);
             allTerms.forEach(t => { if (t?.studysetId) studysetIds.add(t.studysetId); });
 
             await db.practiceTests.update(id, {
@@ -581,13 +592,18 @@ export const idbApiLayer = {
                 questionsCorrect,
                 questionsTotal,
                 studysetIds: Array.from(studysetIds),
-                termIds: Array.from(termIds)
+                questionTermIds: Array.from(questionTermIds),
+                distractorTermIds: Array.from(distractorTermIds)
             });
             return await db.practiceTests.get(id);
         });
     },
     getPracticeTestsByTermId: async function (termId: number | string) {
-        const tests = await db.practiceTests.where("termIds").equals(termId).toArray();
+        const tests = await db.practiceTests
+            .where("questionTermIds").equals(termId)
+            .or("distractorTermIds").equals(termId)
+            .distinct()
+            .toArray();
         tests.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
         return tests;
     }

@@ -40,7 +40,8 @@ interface TermAtp {
 interface PracticeTest {
     id: number;
     studysetIds: (number | string)[];
-    termIds: (number | string)[];
+    questionTermIds: (number | string)[];
+    distractorTermIds: (number | string)[];
     timestamp: string;
     questionsCorrect: number;
     questionsTotal: number;
@@ -55,7 +56,8 @@ interface MCQ {
     answerWith: string;
     term: TermAtp;
     correct: boolean;
-    answeredIndex: number;
+    correctChoiceIndex: number;
+    answeredIndex: number | null;
     distractors: TermAtp[];
 }
 interface TFQ {
