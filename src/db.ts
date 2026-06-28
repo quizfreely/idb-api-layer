@@ -31,29 +31,56 @@ interface Term {
     createdAt: string
     updatedAt: string
     progress?: TermProgress
-    progressHistory?: TermProgressHistory[]
     topConfusionPairs?: TermConfusionPair[]
     topReverseConfusionPairs?: TermConfusionPair[]
 }
 
 interface TermAtp {
     id: number | string
-    term: string
-    def: string
+    termSnapshot: string
+    defSnapshot: string
 }
 
 interface PracticeTest {
     id: number
     studysetIds: (number | string)[]
-    questionTermIds: (number | string)[]
-    distractorTermIds: (number | string)[]
     timestamp: string
     questionsCorrect: number
     questionsTotal: number
-    questions: Question[]
+    questions?: PracticeTestQuestion[]
+}
+
+interface PracticeTestQuestion {
+    id: number
+    practiceTestId: number
+    termId: number | string
+    termSnapshot: string
+    defSnapshot: string
+    type: "mcq" | "tfq" | "frq"
+    position: number
+    correct: boolean
+    answerWith: string
+    data: MCQData | TFQData | FRQData
+}
+
+interface MCQData {
+    distractors: TermAtp[]
+    correctChoiceIndex: number
+    answeredIndex: number | null
+}
+
+interface TFQData {
+    distractor?: TermAtp | null
+    answeredBool: boolean
+}
+
+interface FRQData {
+    answeredString: string
+    userMarkedCorrect?: boolean
 }
 
 interface Question {
+    id?: number
     mcq?: MCQ
     tfq?: TFQ
     frq?: FRQ
@@ -97,18 +124,6 @@ interface TermProgress {
     termLastReviewedAt?: string
     defFirstReviewedAt?: string
     defLastReviewedAt?: string
-    termLeitnerSystemBox?: number
-    defLeitnerSystemBox?: number
-}
-
-interface TermProgressHistory {
-    id: number
-    timestamp: string
-    termId: number | string
-    termCorrectCount: number
-    termIncorrectCount: number
-    defCorrectCount: number
-    defIncorrectCount: number
 }
 
 interface TermConfusionPair {
@@ -140,12 +155,12 @@ const db = new Dexie("quizfreelydata") as Dexie & {
         PracticeTest,
         "id"
     >
-    termProgress: EntityTable<
-        TermProgress,
+    practiceTestQuestions: EntityTable<
+        PracticeTestQuestion,
         "id"
     >
-    termProgressHistory: EntityTable<
-        TermProgressHistory,
+    termProgress: EntityTable<
+        TermProgress,
         "id"
     >
     termConfusionPairs: EntityTable<
@@ -343,7 +358,7 @@ db.version(16).stores({
 
                 // Helper to convert Term to TermAtp and track IDs
                 const toTermAtp = (t: any, isQuestion: boolean): TermAtp => {
-                    if (!t) return { id: 0, term: '', def: '' };
+                    if (!t) return { id: 0, termSnapshot: '', defSnapshot: '' };
                     if (t.id) {
                         if (isQuestion) questionTermIds.add(t.id);
                         else distractorTermIds.add(t.id);
@@ -351,8 +366,8 @@ db.version(16).stores({
                     if (t.studysetId) studysetIds.add(t.studysetId);
                     return {
                         id: t.id,
-                        term: t.term || '',
-                        def: t.def || ''
+                        termSnapshot: t.term || t.termSnapshot || '',
+                        defSnapshot: t.def || t.defSnapshot || ''
                     };
                 };
 
@@ -429,5 +444,95 @@ db.version(16).stores({
     });
 });
 
-export type { Studyset, Term, TermAtp, PracticeTest, Question, MCQ, TFQ, FRQ, TermProgress, TermProgressHistory, TermConfusionPair }
+db.version(17).stores({
+    practiceTests: "++id, timestamp, *studysetIds, questionsCorrect, questionsTotal",
+    practiceTestQuestions: "++id, practiceTestId, termId, [practiceTestId+position]",
+    termProgress: "++id, termId, termFirstReviewedAt, termLastReviewedAt, " +
+        "termReviewCount, defFirstReviewedAt, defLastReviewedAt, " +
+        "defReviewCount, termCorrectCount, termIncorrectCount, defCorrectCount, defIncorrectCount",
+    termProgressHistory: null
+}).upgrade(async tx => {
+    await tx.table("termProgress").toCollection().modify(tp => {
+        delete tp.termLeitnerSystemBox;
+        delete tp.defLeitnerSystemBox;
+    });
+
+    await tx.table("practiceTests").toCollection().each(async pt => {
+        if (pt.questions && Array.isArray(pt.questions)) {
+            for (let i = 0; i < pt.questions.length; i++) {
+                const q = pt.questions[i];
+                let type: "mcq" | "tfq" | "frq" = "mcq";
+                let qData: any = {};
+                let termAtp: any = null;
+                let correct = false;
+                let answerWith = "";
+
+                if (q.mcq) {
+                    type = "mcq";
+                    termAtp = q.mcq.term;
+                    correct = q.mcq.correct;
+                    answerWith = q.mcq.answerWith;
+                    qData = {
+                        distractors: (q.mcq.distractors || []).map((d: any) => ({
+                            id: d.id,
+                            termSnapshot: d.termSnapshot || d.term || "",
+                            defSnapshot: d.defSnapshot || d.def || ""
+                        })),
+                        correctChoiceIndex: q.mcq.correctChoiceIndex,
+                        answeredIndex: q.mcq.answeredIndex
+                    };
+                } else if (q.tfq) {
+                    type = "tfq";
+                    termAtp = q.tfq.term;
+                    correct = q.tfq.correct;
+                    answerWith = q.tfq.answerWith;
+                    qData = {
+                        distractor: q.tfq.distractor ? {
+                            id: q.tfq.distractor.id,
+                            termSnapshot: q.tfq.distractor.termSnapshot || q.tfq.distractor.term || "",
+                            defSnapshot: q.tfq.distractor.defSnapshot || q.tfq.distractor.def || ""
+                        } : null,
+                        answeredBool: q.tfq.answeredBool
+                    };
+                } else if (q.frq) {
+                    type = "frq";
+                    termAtp = q.frq.term;
+                    correct = q.frq.correct;
+                    answerWith = q.frq.answerWith;
+
+                    let userMarkedCorrect = q.frq.userMarkedCorrect;
+                    if (!correct && userMarkedCorrect) {
+                        correct = true;
+                        userMarkedCorrect = true;
+                    }
+
+                    qData = {
+                        answeredString: q.frq.answeredString,
+                        userMarkedCorrect: userMarkedCorrect
+                    };
+                }
+
+                if (termAtp) {
+                    await tx.table("practiceTestQuestions").add({
+                        practiceTestId: pt.id,
+                        termId: termAtp.id,
+                        termSnapshot: termAtp.termSnapshot || termAtp.term || "",
+                        defSnapshot: termAtp.defSnapshot || termAtp.def || "",
+                        type: type,
+                        position: i,
+                        correct: correct,
+                        answerWith: answerWith,
+                        data: qData
+                    });
+                }
+            }
+        }
+        delete pt.questions;
+        delete pt.questionTermIds;
+        delete pt.distractorTermIds;
+        await tx.table("practiceTests").put(pt);
+    });
+});
+
+export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, TermConfusionPair }
 export { db };

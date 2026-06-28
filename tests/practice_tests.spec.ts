@@ -15,7 +15,7 @@ test('practice tests: recording and retrieval in studyset', async ({ page }) => 
       { term: "T1", def: "D1", sortOrder: 0 }
     ]);
     const terms = await window.idbApiLayer.getTermsByStudysetId(sid);
-    const t1 = { id: terms[0].id, term: terms[0].term, def: terms[0].def };
+    const t1 = { id: terms[0].id, termSnapshot: terms[0].term, defSnapshot: terms[0].def };
 
     // Record two practice tests at different timestamps
     const time1 = "2024-01-01T10:00:00.000Z";
@@ -43,11 +43,14 @@ test('practice tests: recording and retrieval in studyset', async ({ page }) => 
   // Should be sorted by timestamp descending
   expect(result.studysetWithTests?.practiceTests?.[0].timestamp).toBe("2024-01-02T10:00:00.000Z");
   expect(result.studysetWithTests?.practiceTests?.[0].questionsCorrect).toBe(0);
+  expect(result.studysetWithTests?.practiceTests?.[0].questions).toHaveLength(1);
+  expect(result.studysetWithTests?.practiceTests?.[0].questions[0].termId).toBeDefined();
+
   expect(result.studysetWithTests?.practiceTests?.[1].timestamp).toBe("2024-01-01T10:00:00.000Z");
   expect(result.studysetWithTests?.practiceTests?.[1].questionsCorrect).toBe(1);
 });
 
-test('practice tests: update and retrieval by term', async ({ page }) => {
+test('practice tests: update question and retrieval by term', async ({ page }) => {
   const result = await page.evaluate(async () => {
     const sid = await window.idbApiLayer.createStudyset({ title: "S", draft: false });
     await window.idbApiLayer.createTerms(sid, [
@@ -55,34 +58,29 @@ test('practice tests: update and retrieval by term', async ({ page }) => {
       { term: "T2", def: "D2", sortOrder: 1 }
     ]);
     const terms = await window.idbApiLayer.getTermsByStudysetId(sid);
-    const t1 = { id: terms[0].id, term: terms[0].term, def: terms[0].def };
-    const t2 = { id: terms[1].id, term: terms[1].term, def: terms[1].def };
+    const t1 = { id: terms[0].id, termSnapshot: terms[0].term, defSnapshot: terms[0].def };
+    const t2 = { id: terms[1].id, termSnapshot: terms[1].term, defSnapshot: terms[1].def };
 
     const pt = await window.idbApiLayer.recordPracticeTest({
         questions: [
-          { tfq: { term: t1, answerWith: "DEF", correct: true, answeredBool: true } }
+          { frq: { term: t1, answerWith: "DEF", correct: false, answeredString: "wrong" } }
         ]
     });
 
-    // Update the test to include another term as a question and another as a distractor
-    await window.idbApiLayer.updatePracticeTest(pt.id, {
-      questions: [
-        { mcq: { term: t1, answerWith: "DEF", correct: true, correctChoiceIndex: 0, answeredIndex: 0, distractors: [t2] } },
-        { frq: { term: t2, answerWith: "TERM", correct: false, answeredString: "wrong" } }
-      ]
-    });
+    const questionId = pt.questions[0].id;
+    // Mark FRQ as manually correct
+    await window.idbApiLayer.updatePracticeTestQuestion(questionId, true, true);
 
     const testsForT1 = await window.idbApiLayer.getPracticeTestsByTermId(t1.id);
-    const testsForT2 = await window.idbApiLayer.getPracticeTestsByTermId(t2.id);
     const updatedPt = await window.db.practiceTests.get(pt.id);
+    const updatedQuestion = await window.db.practiceTestQuestions.get(questionId);
 
-    return { testsForT1, testsForT2, updatedPt };
+    return { testsForT1, updatedPt, updatedQuestion };
   });
 
   expect(result.testsForT1).toHaveLength(1);
-  expect(result.testsForT2).toHaveLength(1);
   expect(result.updatedPt.questionsCorrect).toBe(1);
-  expect(result.updatedPt.questionsTotal).toBe(2);
-  expect(result.updatedPt.questionTermIds).toContain(result.testsForT1[0].questionTermIds[0]);
-  expect(result.updatedPt.distractorTermIds).toContain(result.testsForT2[0].distractorTermIds[0]);
+  expect(result.updatedPt.questionsTotal).toBe(1);
+  expect(result.updatedQuestion.correct).toBe(true);
+  expect(result.updatedQuestion.data.userMarkedCorrect).toBe(true);
 });

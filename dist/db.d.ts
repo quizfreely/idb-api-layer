@@ -28,26 +28,49 @@ interface Term {
     createdAt: string;
     updatedAt: string;
     progress?: TermProgress;
-    progressHistory?: TermProgressHistory[];
     topConfusionPairs?: TermConfusionPair[];
     topReverseConfusionPairs?: TermConfusionPair[];
 }
 interface TermAtp {
     id: number | string;
-    term: string;
-    def: string;
+    termSnapshot: string;
+    defSnapshot: string;
 }
 interface PracticeTest {
     id: number;
     studysetIds: (number | string)[];
-    questionTermIds: (number | string)[];
-    distractorTermIds: (number | string)[];
     timestamp: string;
     questionsCorrect: number;
     questionsTotal: number;
-    questions: Question[];
+    questions?: PracticeTestQuestion[];
+}
+interface PracticeTestQuestion {
+    id: number;
+    practiceTestId: number;
+    termId: number | string;
+    termSnapshot: string;
+    defSnapshot: string;
+    type: "mcq" | "tfq" | "frq";
+    position: number;
+    correct: boolean;
+    answerWith: string;
+    data: MCQData | TFQData | FRQData;
+}
+interface MCQData {
+    distractors: TermAtp[];
+    correctChoiceIndex: number;
+    answeredIndex: number | null;
+}
+interface TFQData {
+    distractor?: TermAtp | null;
+    answeredBool: boolean;
+}
+interface FRQData {
+    answeredString: string;
+    userMarkedCorrect?: boolean;
 }
 interface Question {
+    id?: number;
     mcq?: MCQ;
     tfq?: TFQ;
     frq?: FRQ;
@@ -87,17 +110,6 @@ interface TermProgress {
     termLastReviewedAt?: string;
     defFirstReviewedAt?: string;
     defLastReviewedAt?: string;
-    termLeitnerSystemBox?: number;
-    defLeitnerSystemBox?: number;
-}
-interface TermProgressHistory {
-    id: number;
-    timestamp: string;
-    termId: number | string;
-    termCorrectCount: number;
-    termIncorrectCount: number;
-    defCorrectCount: number;
-    defIncorrectCount: number;
 }
 interface TermConfusionPair {
     id: number;
@@ -117,10 +129,10 @@ declare const db: Dexie & {
     studysets: EntityTable<Studyset, "id">;
     terms: EntityTable<Term, "id">;
     practiceTests: EntityTable<PracticeTest, "id">;
+    practiceTestQuestions: EntityTable<PracticeTestQuestion, "id">;
     termProgress: EntityTable<TermProgress, "id">;
-    termProgressHistory: EntityTable<TermProgressHistory, "id">;
     termConfusionPairs: EntityTable<TermConfusionPair, "id">;
     images: EntityTable<Image, "key">;
 };
-export type { Studyset, Term, TermAtp, PracticeTest, Question, MCQ, TFQ, FRQ, TermProgress, TermProgressHistory, TermConfusionPair };
+export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, TermConfusionPair };
 export { db };
