@@ -6,7 +6,7 @@
  * https://github.com/quizfreely/idb-api-layer
  */
 import Dexie from 'dexie';
-import { db, Term, TermConfusionPair, TermProgress, TermProgressHistory } from "./db";
+import { db, Term, TermConfusionPair, TermProgress, PracticeTestQuestion } from "./db";
 import { idbLayerImg } from "./images";
 
 function isTitleValid(newTitle: string) {
@@ -28,7 +28,6 @@ type StudysetResolveProps = {
 }
 type TermResolveProps = {
     progress?: boolean;
-    progressHistory?: boolean;
     topConfusionPairs?: boolean;
     topReverseConfusionPairs?: boolean;
     termImageUrl?: boolean;
@@ -57,6 +56,12 @@ export const idbApiLayer = {
             studysets[0].practiceTests?.sort(
                 (a, b) => b.timestamp.localeCompare(a.timestamp)
             );
+
+            await Promise.all(studysets[0].practiceTests.map(async pt => {
+                pt.questions = await db.practiceTestQuestions
+                    .where("practiceTestId").equals(pt.id)
+                    .sortBy("position");
+            }));
         }
 
         return studysets[0];
@@ -71,7 +76,6 @@ export const idbApiLayer = {
                 true
             ).toArray();
         if (resolveProps?.progress ||
-            resolveProps?.progressHistory ||
             resolveProps?.topConfusionPairs ||
             resolveProps?.topReverseConfusionPairs ||
             resolveProps?.termImageUrl ||
@@ -80,7 +84,6 @@ export const idbApiLayer = {
             await Promise.all(terms.map(async term => {
                 const promises: {
                     progress?: Promise<TermProgress[]>;
-                    progressHistory?: Promise<TermProgressHistory[]>;
                     topConfusionPairs?: Promise<TermConfusionPair[]>;
                     topReverseConfusionPairs?: Promise<TermConfusionPair[]>;
                     termImageUrl?: Promise<string | null>;
@@ -88,9 +91,6 @@ export const idbApiLayer = {
                 } = {};
                 if (resolveProps?.progress) {
                     promises.progress = db.termProgress.where("termId").equals(term.id).toArray();
-                }
-                if (resolveProps?.progressHistory) {
-                    promises.progressHistory = db.termProgressHistory.where("termId").equals(term.id).toArray();
                 }
                 if (resolveProps?.topConfusionPairs) {
                     promises.topConfusionPairs = this.getTopConfusionPairs(term.id);
@@ -107,14 +107,12 @@ export const idbApiLayer = {
                 const results = await Promise.all(Object.entries(promises).map(async ([k, p]) => [k, await p]));
                 const resolved = Object.fromEntries(results) as {
                     progress?: TermProgress[];
-                    progressHistory?: TermProgressHistory[];
                     topConfusionPairs?: TermConfusionPair[];
                     topReverseConfusionPairs?: TermConfusionPair[];
                     termImageUrl?: string;
                     defImageUrl?: string;
                 };
                 term.progress = resolved.progress?.[0] ?? undefined;
-                term.progressHistory = resolved.progressHistory;
                 term.topConfusionPairs = resolved.topConfusionPairs;
                 term.topReverseConfusionPairs = resolved.topReverseConfusionPairs;
                 term.termImageUrl = term.termImageKey == null ? null : resolved.termImageUrl;
@@ -134,9 +132,6 @@ export const idbApiLayer = {
 
         if (resolveProps?.progress) {
             term.progress = (await db.termProgress.where("termId").equals(termId).toArray())?.[0];
-        }
-        if (resolveProps?.progressHistory) {
-            term.progressHistory = await db.termProgressHistory.where("termId").equals(termId).toArray();
         }
         if (resolveProps?.topConfusionPairs) {
             term.topConfusionPairs = await this.getTopConfusionPairs(term.id);
@@ -234,7 +229,6 @@ export const idbApiLayer = {
         for (const {
             termId,
             termReviewedAt, defReviewedAt,
-            termLeitnerSystemBox, defLeitnerSystemBox,
             termCorrectIncrease, termIncorrectIncrease,
             defCorrectIncrease, defIncorrectIncrease
         } of termProgressArray) {
@@ -258,25 +252,14 @@ export const idbApiLayer = {
                         defReviewCount: defReviewedAt != null ?
                             (existingProgress[0]?.defReviewCount ?? 0) + 1 :
                             existingProgress[0]?.defReviewCount,
-                        termLeitnerSystemBox: termLeitnerSystemBox ?? existingProgress[0].termLeitnerSystemBox,
-                        defLeitnerSystemBox: defLeitnerSystemBox ?? existingProgress[0].defLeitnerSystemBox,
                         termCorrectCount: termCorrectCount,
                         termIncorrectCount: termIncorrectCount,
                         defCorrectCount: defCorrectCount,
                         defIncorrectCount: defIncorrectCount
                     }
                 );
-
-                await db.termProgressHistory.add({
-                    termId: termId,
-                    timestamp: (new Date()).toISOString(),
-                    termCorrectCount: termCorrectCount,
-                    termIncorrectCount: termIncorrectCount,
-                    defCorrectCount: defCorrectCount,
-                    defIncorrectCount: defIncorrectCount
-                })
             } else {
-                const newProgressId = await db.termProgress.add({
+                await db.termProgress.add({
                     termId: termId,
                     termFirstReviewedAt: termReviewedAt,
                     termLastReviewedAt: termReviewedAt,
@@ -286,17 +269,6 @@ export const idbApiLayer = {
                     defLastReviewedAt: defReviewedAt,
                     defReviewCount: defReviewedAt != null ?
                         1 : 0,
-                    termLeitnerSystemBox: termLeitnerSystemBox,
-                    defLeitnerSystemBox: defLeitnerSystemBox,
-                    termCorrectCount: termCorrectIncrease ?? 0,
-                    termIncorrectCount: termIncorrectIncrease ?? 0,
-                    defCorrectCount: defCorrectIncrease ?? 0,
-                    defIncorrectCount: defIncorrectIncrease ?? 0
-                });
-
-                await db.termProgressHistory.add({
-                    termId: termId,
-                    timestamp: (new Date()).toISOString(),
                     termCorrectCount: termCorrectIncrease ?? 0,
                     termIncorrectCount: termIncorrectIncrease ?? 0,
                     defCorrectCount: defCorrectIncrease ?? 0,
@@ -389,47 +361,95 @@ export const idbApiLayer = {
         return true;
     },
     recordPracticeTest: async function (practiceTest: any) {
-        return await db.transaction('rw', [db.practiceTests, db.termProgress, db.termProgressHistory, db.terms], async () => {
+        return await db.transaction('rw', [db.practiceTests, db.practiceTestQuestions, db.termProgress, db.terms], async () => {
             const rnISOString = (new Date()).toISOString();
             const termProgressMap = new Map<any, any>();
             const studysetIds = new Set<number | string>();
-            const questionTermIds = new Set<number | string>();
-            const distractorTermIds = new Set<number | string>();
+            const involvedTermIds = new Set<number | string>();
             let questionsCorrect = 0;
             let questionsTotal = 0;
 
+            const questionsToInsert: any[] = [];
+
             if (practiceTest.questions && Array.isArray(practiceTest.questions)) {
                 questionsTotal = practiceTest.questions.length;
-                for (const q of practiceTest.questions) {
+                for (let i = 0; i < practiceTest.questions.length; i++) {
+                    const q = practiceTest.questions[i];
                     if (!q) continue;
+
                     let termId: any = null;
                     let answerWith: string | null = null;
                     let correct = false;
+                    let type: "mcq" | "tfq" | "frq" = "mcq";
+                    let termSnapshot = "";
+                    let defSnapshot = "";
+                    let qData: any = {};
 
                     if (q.mcq) {
+                        type = "mcq";
                         if (!q.mcq.term) throw new Error("MCQ question is missing term");
                         termId = q.mcq.term.id;
-                        questionTermIds.add(termId);
-                        (q.mcq.distractors || []).forEach((d: any) => { if (d.id) distractorTermIds.add(d.id); });
+                        termSnapshot = q.mcq.term.termSnapshot || q.mcq.term.term || "";
+                        defSnapshot = q.mcq.term.defSnapshot || q.mcq.term.def || "";
                         answerWith = q.mcq.answerWith;
                         correct = !!q.mcq.correct;
+                        qData = {
+                            distractors: (q.mcq.distractors || []).map((d: any) => {
+                                if (d.id) involvedTermIds.add(d.id);
+                                return {
+                                    id: d.id,
+                                    termSnapshot: d.termSnapshot || d.term || "",
+                                    defSnapshot: d.defSnapshot || d.def || ""
+                                };
+                            }),
+                            correctChoiceIndex: q.mcq.correctChoiceIndex,
+                            answeredIndex: q.mcq.answeredIndex
+                        };
                     } else if (q.tfq) {
+                        type = "tfq";
                         if (!q.tfq.term) throw new Error("TFQ question is missing term");
                         termId = q.tfq.term.id;
-                        questionTermIds.add(termId);
-                        if (q.tfq.distractor?.id) distractorTermIds.add(q.tfq.distractor.id);
+                        termSnapshot = q.tfq.term.termSnapshot || q.tfq.term.term || "";
+                        defSnapshot = q.tfq.term.defSnapshot || q.tfq.term.def || "";
                         answerWith = q.tfq.answerWith;
                         correct = !!q.tfq.correct;
+                        if (q.tfq.distractor?.id) involvedTermIds.add(q.tfq.distractor.id);
+                        qData = {
+                            distractor: q.tfq.distractor ? {
+                                id: q.tfq.distractor.id,
+                                termSnapshot: q.tfq.distractor.termSnapshot || q.tfq.distractor.term || "",
+                                defSnapshot: q.tfq.distractor.defSnapshot || q.tfq.distractor.def || ""
+                            } : null,
+                            answeredBool: q.tfq.answeredBool
+                        };
                     } else if (q.frq) {
+                        type = "frq";
                         if (!q.frq.term) throw new Error("FRQ question is missing term");
                         termId = q.frq.term.id;
-                        questionTermIds.add(termId);
+                        termSnapshot = q.frq.term.termSnapshot || q.frq.term.term || "";
+                        defSnapshot = q.frq.term.defSnapshot || q.frq.term.def || "";
                         answerWith = q.frq.answerWith;
                         correct = !!q.frq.correct || !!q.frq.userMarkedCorrect;
+                        qData = {
+                            answeredString: q.frq.answeredString || "",
+                            userMarkedCorrect: !!q.frq.userMarkedCorrect
+                        };
                     }
 
                     if (correct) questionsCorrect++;
                     if (termId == null) continue;
+                    involvedTermIds.add(termId);
+
+                    questionsToInsert.push({
+                        termId,
+                        termSnapshot,
+                        defSnapshot,
+                        type,
+                        position: i,
+                        correct,
+                        answerWith,
+                        data: qData
+                    });
 
                     let tp = termProgressMap.get(termId);
                     if (!tp) {
@@ -437,8 +457,6 @@ export const idbApiLayer = {
                             termId,
                             termReviewedAt: null,
                             defReviewedAt: null,
-                            termLeitnerSystemBox: null,
-                            defLeitnerSystemBox: null,
                             termCorrectIncrease: 0,
                             termIncorrectIncrease: 0,
                             defCorrectIncrease: 0,
@@ -459,29 +477,21 @@ export const idbApiLayer = {
                         if (answerWith === "DEF") {
                             tp.defIncorrectIncrease += 1;
                             tp.defReviewedAt = rnISOString;
-                            tp.defLeitnerSystemBox = 1;
                         } else {
                             tp.termIncorrectIncrease += 1;
                             tp.termReviewedAt = rnISOString;
-                            tp.termLeitnerSystemBox = 1;
                         }
                     }
                 }
             }
 
             // Fetch studysetIds for all involved terms
-            const combinedTermIds = new Set([...questionTermIds, ...distractorTermIds]);
-            const allTerms = await db.terms.bulkGet(Array.from(combinedTermIds) as number[]);
+            const allTerms = await db.terms.bulkGet(Array.from(involvedTermIds) as number[]);
             allTerms.forEach(t => { if (t?.studysetId) studysetIds.add(t.studysetId); });
 
             for (const tp of termProgressMap.values()) {
                 const existingProgress = await db.termProgress.where("termId").equals(tp.termId).toArray();
                 if (existingProgress?.length > 0) {
-                    const termCorrectCount = (existingProgress[0].termCorrectCount) + (tp.termCorrectIncrease);
-                    const termIncorrectCount = (existingProgress[0].termIncorrectCount) + (tp.termIncorrectIncrease);
-                    const defCorrectCount = (existingProgress[0].defCorrectCount) + (tp.defCorrectIncrease);
-                    const defIncorrectCount = (existingProgress[0].defIncorrectCount) + (tp.defIncorrectIncrease);
-
                     await db.termProgress.update(
                         existingProgress[0].id,
                         {
@@ -495,23 +505,12 @@ export const idbApiLayer = {
                             defReviewCount: tp.defReviewedAt != null ?
                                 (existingProgress[0]?.defReviewCount ?? 0) + 1 :
                                 existingProgress[0]?.defReviewCount,
-                            termLeitnerSystemBox: tp.termLeitnerSystemBox ?? existingProgress[0].termLeitnerSystemBox,
-                            defLeitnerSystemBox: tp.defLeitnerSystemBox ?? existingProgress[0].defLeitnerSystemBox,
-                            termCorrectCount: termCorrectCount,
-                            termIncorrectCount: termIncorrectCount,
-                            defCorrectCount: defCorrectCount,
-                            defIncorrectCount: defIncorrectCount
+                            termCorrectCount: (existingProgress[0].termCorrectCount) + (tp.termCorrectIncrease),
+                            termIncorrectCount: (existingProgress[0].termIncorrectCount) + (tp.termIncorrectIncrease),
+                            defCorrectCount: (existingProgress[0].defCorrectCount) + (tp.defCorrectIncrease),
+                            defIncorrectCount: (existingProgress[0].defIncorrectCount) + (tp.defIncorrectIncrease)
                         }
                     );
-
-                    await db.termProgressHistory.add({
-                        termId: tp.termId,
-                        timestamp: rnISOString,
-                        termCorrectCount: termCorrectCount,
-                        termIncorrectCount: termIncorrectCount,
-                        defCorrectCount: defCorrectCount,
-                        defIncorrectCount: defIncorrectCount
-                    });
                 } else {
                     await db.termProgress.add({
                         termId: tp.termId,
@@ -521,17 +520,6 @@ export const idbApiLayer = {
                         defFirstReviewedAt: tp.defReviewedAt,
                         defLastReviewedAt: tp.defReviewedAt,
                         defReviewCount: tp.defReviewedAt != null ? 1 : 0,
-                        termLeitnerSystemBox: tp.termLeitnerSystemBox,
-                        defLeitnerSystemBox: tp.defLeitnerSystemBox,
-                        termCorrectCount: tp.termCorrectIncrease,
-                        termIncorrectCount: tp.termIncorrectIncrease,
-                        defCorrectCount: tp.defCorrectIncrease,
-                        defIncorrectCount: tp.defIncorrectIncrease
-                    });
-
-                    await db.termProgressHistory.add({
-                        termId: tp.termId,
-                        timestamp: rnISOString,
                         termCorrectCount: tp.termCorrectIncrease,
                         termIncorrectCount: tp.termIncorrectIncrease,
                         defCorrectCount: tp.defCorrectIncrease,
@@ -540,71 +528,99 @@ export const idbApiLayer = {
                 }
             }
 
-            practiceTest.questionsCorrect = questionsCorrect;
-            practiceTest.questionsTotal = questionsTotal;
-            practiceTest.studysetIds = Array.from(studysetIds);
-            practiceTest.questionTermIds = Array.from(questionTermIds);
-            practiceTest.distractorTermIds = Array.from(distractorTermIds);
-            if (!practiceTest.timestamp) practiceTest.timestamp = rnISOString;
-
-            const id = await db.practiceTests.add(practiceTest);
-            return await db.practiceTests.get(id);
-        });
-    },
-    updatePracticeTest: async function (id: number, practiceTest: any) {
-        return await db.transaction('rw', [db.practiceTests, db.terms], async () => {
-            const studysetIds = new Set<number | string>();
-            const questionTermIds = new Set<number | string>();
-            const distractorTermIds = new Set<number | string>();
-            let questionsCorrect = 0;
-            let questionsTotal = 0;
-
-            if (practiceTest.questions && Array.isArray(practiceTest.questions)) {
-                questionsTotal = practiceTest.questions.length;
-                for (const q of practiceTest.questions) {
-                    if (!q) continue;
-                    let correct = false;
-                    if (q.mcq) {
-                        if (!q.mcq.term) throw new Error("MCQ question is missing term");
-                        questionTermIds.add(q.mcq.term.id);
-                        (q.mcq.distractors || []).forEach((d: any) => { if (d.id) distractorTermIds.add(d.id); });
-                        correct = !!q.mcq.correct;
-                    } else if (q.tfq) {
-                        if (!q.tfq.term) throw new Error("TFQ question is missing term");
-                        questionTermIds.add(q.tfq.term.id);
-                        if (q.tfq.distractor?.id) distractorTermIds.add(q.tfq.distractor.id);
-                        correct = !!q.tfq.correct;
-                    } else if (q.frq) {
-                        if (!q.frq.term) throw new Error("FRQ question is missing term");
-                        questionTermIds.add(q.frq.term.id);
-                        correct = !!q.frq.correct || !!q.frq.userMarkedCorrect;
-                    }
-                    if (correct) questionsCorrect++;
-                }
-            }
-
-            const combinedTermIds = new Set([...questionTermIds, ...distractorTermIds]);
-            const allTerms = await db.terms.bulkGet(Array.from(combinedTermIds) as number[]);
-            allTerms.forEach(t => { if (t?.studysetId) studysetIds.add(t.studysetId); });
-
-            await db.practiceTests.update(id, {
-                questions: practiceTest.questions,
+            const ptRecord = {
+                timestamp: practiceTest.timestamp || rnISOString,
                 questionsCorrect,
                 questionsTotal,
-                studysetIds: Array.from(studysetIds),
-                questionTermIds: Array.from(questionTermIds),
-                distractorTermIds: Array.from(distractorTermIds)
+                studysetIds: Array.from(studysetIds)
+            };
+
+            const ptId = await db.practiceTests.add(ptRecord);
+
+            for (const q of questionsToInsert) {
+                q.practiceTestId = ptId;
+                await db.practiceTestQuestions.add(q);
+            }
+
+            return await this.getPracticeTestWithQuestions(ptId);
+        });
+    },
+    getPracticeTestWithQuestions: async function(ptId: number) {
+        const pt = await db.practiceTests.get(ptId);
+        if (!pt) return null;
+        pt.questions = await db.practiceTestQuestions
+            .where("practiceTestId").equals(ptId)
+            .sortBy("position");
+        return pt;
+    },
+    updatePracticeTestQuestion: async function (id: number, correct: boolean, userMarkedCorrect?: boolean) {
+        return await db.transaction('rw', [db.practiceTests, db.practiceTestQuestions, db.termProgress], async () => {
+            const question = await db.practiceTestQuestions.get(id);
+            if (!question) throw new Error("Question not found");
+
+            const wasCorrect = question.correct;
+            const isCorrect = correct;
+
+            if (wasCorrect === isCorrect && question.type === "frq" && (question.data as any).userMarkedCorrect === userMarkedCorrect) {
+                return question;
+            }
+
+            // Update question
+            const newData = { ...question.data } as any;
+            if (question.type === "frq") {
+                newData.userMarkedCorrect = userMarkedCorrect;
+            }
+            await db.practiceTestQuestions.update(id, {
+                correct: isCorrect,
+                data: newData
             });
-            return await db.practiceTests.get(id);
+
+            // Update practice test accuracy
+            if (wasCorrect !== isCorrect) {
+                const pt = await db.practiceTests.get(question.practiceTestId);
+                if (pt) {
+                    await db.practiceTests.update(pt.id, {
+                        questionsCorrect: pt.questionsCorrect + (isCorrect ? 1 : -1)
+                    });
+                }
+
+                // Update term progress
+                const existingProgress = await db.termProgress.where("termId").equals(question.termId).toArray();
+                if (existingProgress?.length > 0) {
+                    const changes: any = {};
+                    if (question.answerWith === "DEF") {
+                        changes.defCorrectCount = existingProgress[0].defCorrectCount + (isCorrect ? 1 : -1);
+                        changes.defIncorrectCount = existingProgress[0].defIncorrectCount + (isCorrect ? -1 : 1);
+                    } else {
+                        changes.termCorrectCount = existingProgress[0].termCorrectCount + (isCorrect ? 1 : -1);
+                        changes.termIncorrectCount = existingProgress[0].termIncorrectCount + (isCorrect ? -1 : 1);
+                    }
+                    await db.termProgress.update(existingProgress[0].id, changes);
+                }
+            }
+
+            return await db.practiceTestQuestions.get(id);
         });
     },
     getPracticeTestsByTermId: async function (termId: number | string) {
-        const tests = await db.practiceTests
-            .where("questionTermIds").equals(termId)
-            .or("distractorTermIds").equals(termId)
-            .distinct()
-            .toArray();
-        tests.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-        return tests;
+        const questionIds = await db.practiceTestQuestions
+            .where("termId").equals(termId)
+            .primaryKeys();
+
+        const questions = await db.practiceTestQuestions.bulkGet(questionIds as number[]);
+        const ptIds = new Set<number>();
+        questions.forEach(q => { if (q) ptIds.add(q.practiceTestId); });
+
+        const tests = await db.practiceTests.bulkGet(Array.from(ptIds));
+        const filteredTests = tests.filter((t): t is NonNullable<typeof t> => t !== undefined);
+
+        await Promise.all(filteredTests.map(async pt => {
+            pt.questions = await db.practiceTestQuestions
+                .where("practiceTestId").equals(pt.id)
+                .sortBy("position");
+        }));
+
+        filteredTests.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        return filteredTests;
     }
 }

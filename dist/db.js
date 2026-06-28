@@ -183,7 +183,7 @@ db.version(16).stores({
                 // Helper to convert Term to TermAtp and track IDs
                 const toTermAtp = (t, isQuestion) => {
                     if (!t)
-                        return { id: 0, term: '', def: '' };
+                        return { id: 0, termSnapshot: '', defSnapshot: '' };
                     if (t.id) {
                         if (isQuestion)
                             questionTermIds.add(t.id);
@@ -194,8 +194,8 @@ db.version(16).stores({
                         studysetIds.add(t.studysetId);
                     return {
                         id: t.id,
-                        term: t.term || '',
-                        def: t.def || ''
+                        termSnapshot: t.term || t.termSnapshot || '',
+                        defSnapshot: t.def || t.defSnapshot || ''
                     };
                 };
                 if (q.mcq) {
@@ -268,6 +268,92 @@ db.version(16).stores({
             delete pt.termIds;
             await tx.table("practiceTests").put(pt);
         }
+    });
+});
+db.version(17).stores({
+    practiceTests: "++id, timestamp, *studysetIds, questionsCorrect, questionsTotal",
+    practiceTestQuestions: "++id, practiceTestId, termId, [practiceTestId+position]",
+    termProgress: "++id, termId, termFirstReviewedAt, termLastReviewedAt, " +
+        "termReviewCount, defFirstReviewedAt, defLastReviewedAt, " +
+        "defReviewCount, termCorrectCount, termIncorrectCount, defCorrectCount, defIncorrectCount",
+    termProgressHistory: null
+}).upgrade(async (tx) => {
+    await tx.table("termProgress").toCollection().modify(tp => {
+        delete tp.termLeitnerSystemBox;
+        delete tp.defLeitnerSystemBox;
+    });
+    await tx.table("practiceTests").toCollection().each(async (pt) => {
+        if (pt.questions && Array.isArray(pt.questions)) {
+            for (let i = 0; i < pt.questions.length; i++) {
+                const q = pt.questions[i];
+                let type = "mcq";
+                let qData = {};
+                let termAtp = null;
+                let correct = false;
+                let answerWith = "";
+                if (q.mcq) {
+                    type = "mcq";
+                    termAtp = q.mcq.term;
+                    correct = q.mcq.correct;
+                    answerWith = q.mcq.answerWith;
+                    qData = {
+                        distractors: (q.mcq.distractors || []).map((d) => ({
+                            id: d.id,
+                            termSnapshot: d.termSnapshot || d.term || "",
+                            defSnapshot: d.defSnapshot || d.def || ""
+                        })),
+                        correctChoiceIndex: q.mcq.correctChoiceIndex,
+                        answeredIndex: q.mcq.answeredIndex
+                    };
+                }
+                else if (q.tfq) {
+                    type = "tfq";
+                    termAtp = q.tfq.term;
+                    correct = q.tfq.correct;
+                    answerWith = q.tfq.answerWith;
+                    qData = {
+                        distractor: q.tfq.distractor ? {
+                            id: q.tfq.distractor.id,
+                            termSnapshot: q.tfq.distractor.termSnapshot || q.tfq.distractor.term || "",
+                            defSnapshot: q.tfq.distractor.defSnapshot || q.tfq.distractor.def || ""
+                        } : null,
+                        answeredBool: q.tfq.answeredBool
+                    };
+                }
+                else if (q.frq) {
+                    type = "frq";
+                    termAtp = q.frq.term;
+                    correct = q.frq.correct;
+                    answerWith = q.frq.answerWith;
+                    let userMarkedCorrect = q.frq.userMarkedCorrect;
+                    if (!correct && userMarkedCorrect) {
+                        correct = true;
+                        userMarkedCorrect = true;
+                    }
+                    qData = {
+                        answeredString: q.frq.answeredString,
+                        userMarkedCorrect: userMarkedCorrect
+                    };
+                }
+                if (termAtp) {
+                    await tx.table("practiceTestQuestions").add({
+                        practiceTestId: pt.id,
+                        termId: termAtp.id,
+                        termSnapshot: termAtp.termSnapshot || termAtp.term || "",
+                        defSnapshot: termAtp.defSnapshot || termAtp.def || "",
+                        type: type,
+                        position: i,
+                        correct: correct,
+                        answerWith: answerWith,
+                        data: qData
+                    });
+                }
+            }
+        }
+        delete pt.questions;
+        delete pt.questionTermIds;
+        delete pt.distractorTermIds;
+        await tx.table("practiceTests").put(pt);
     });
 });
 export { db };
