@@ -15,7 +15,7 @@ test('practice tests: recording and retrieval in studyset', async ({ page }) => 
       { term: "T1", def: "D1", sortOrder: 0 }
     ]);
     const terms = await window.idbApiLayer.getTermsByStudysetId(sid);
-    const t1 = { id: terms[0].id, termSnapshot: terms[0].term, defSnapshot: terms[0].def };
+    const t1 = { id: terms[0].id, term: terms[0].term, def: terms[0].def };
 
     // Record two practice tests at different timestamps
     const time1 = "2024-01-01T10:00:00.000Z";
@@ -58,8 +58,8 @@ test('practice tests: update question and retrieval by term', async ({ page }) =
       { term: "T2", def: "D2", sortOrder: 1 }
     ]);
     const terms = await window.idbApiLayer.getTermsByStudysetId(sid);
-    const t1 = { id: terms[0].id, termSnapshot: terms[0].term, defSnapshot: terms[0].def };
-    const t2 = { id: terms[1].id, termSnapshot: terms[1].term, defSnapshot: terms[1].def };
+    const t1 = { id: terms[0].id, term: terms[0].term, def: terms[0].def };
+    const t2 = { id: terms[1].id, term: terms[1].term, def: terms[1].def };
 
     const pt = await window.idbApiLayer.recordPracticeTest({
         questions: [

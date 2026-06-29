@@ -33,8 +33,8 @@ interface Term {
 }
 interface TermAtp {
     id: number | string;
-    termSnapshot: string;
-    defSnapshot: string;
+    term: string;
+    def: string;
 }
 interface PracticeTest {
     id: number;
@@ -48,8 +48,8 @@ interface PracticeTestQuestion {
     id: number;
     practiceTestId: number;
     termId: number | string;
-    termSnapshot: string;
-    defSnapshot: string;
+    term: string;
+    def: string;
     type: "mcq" | "tfq" | "frq";
     position: number;
     correct: boolean;

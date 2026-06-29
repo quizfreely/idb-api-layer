@@ -381,16 +381,16 @@ export const idbApiLayer = {
                     let answerWith: string | null = null;
                     let correct = false;
                     let type: "mcq" | "tfq" | "frq" = "mcq";
-                    let termSnapshot = "";
-                    let defSnapshot = "";
+                    let term = "";
+                    let def = "";
                     let qData: any = {};
 
                     if (q.mcq) {
                         type = "mcq";
                         if (!q.mcq.term) throw new Error("MCQ question is missing term");
                         termId = q.mcq.term.id;
-                        termSnapshot = q.mcq.term.termSnapshot || q.mcq.term.term || "";
-                        defSnapshot = q.mcq.term.defSnapshot || q.mcq.term.def || "";
+                        term = q.mcq.term.term || q.mcq.term.termSnapshot || "";
+                        def = q.mcq.term.def || q.mcq.term.defSnapshot || "";
                         answerWith = q.mcq.answerWith;
                         correct = !!q.mcq.correct;
                         qData = {
@@ -398,8 +398,8 @@ export const idbApiLayer = {
                                 if (d.id) involvedTermIds.add(d.id);
                                 return {
                                     id: d.id,
-                                    termSnapshot: d.termSnapshot || d.term || "",
-                                    defSnapshot: d.defSnapshot || d.def || ""
+                                    term: d.term || d.termSnapshot || "",
+                                    def: d.def || d.defSnapshot || ""
                                 };
                             }),
                             correctChoiceIndex: q.mcq.correctChoiceIndex,
@@ -409,16 +409,16 @@ export const idbApiLayer = {
                         type = "tfq";
                         if (!q.tfq.term) throw new Error("TFQ question is missing term");
                         termId = q.tfq.term.id;
-                        termSnapshot = q.tfq.term.termSnapshot || q.tfq.term.term || "";
-                        defSnapshot = q.tfq.term.defSnapshot || q.tfq.term.def || "";
+                        term = q.tfq.term.term || q.tfq.term.termSnapshot || "";
+                        def = q.tfq.term.def || q.tfq.term.defSnapshot || "";
                         answerWith = q.tfq.answerWith;
                         correct = !!q.tfq.correct;
                         if (q.tfq.distractor?.id) involvedTermIds.add(q.tfq.distractor.id);
                         qData = {
                             distractor: q.tfq.distractor ? {
                                 id: q.tfq.distractor.id,
-                                termSnapshot: q.tfq.distractor.termSnapshot || q.tfq.distractor.term || "",
-                                defSnapshot: q.tfq.distractor.defSnapshot || q.tfq.distractor.def || ""
+                                term: q.tfq.distractor.term || q.tfq.distractor.termSnapshot || "",
+                                def: q.tfq.distractor.def || q.tfq.distractor.defSnapshot || ""
                             } : null,
                             answeredBool: q.tfq.answeredBool
                         };
@@ -426,8 +426,8 @@ export const idbApiLayer = {
                         type = "frq";
                         if (!q.frq.term) throw new Error("FRQ question is missing term");
                         termId = q.frq.term.id;
-                        termSnapshot = q.frq.term.termSnapshot || q.frq.term.term || "";
-                        defSnapshot = q.frq.term.defSnapshot || q.frq.term.def || "";
+                        term = q.frq.term.term || q.frq.term.termSnapshot || "";
+                        def = q.frq.term.def || q.frq.term.defSnapshot || "";
                         answerWith = q.frq.answerWith;
                         correct = !!q.frq.correct || !!q.frq.userMarkedCorrect;
                         qData = {
@@ -442,8 +442,8 @@ export const idbApiLayer = {
 
                     questionsToInsert.push({
                         termId,
-                        termSnapshot,
-                        defSnapshot,
+                        term,
+                        def,
                         type,
                         position: i,
                         correct,

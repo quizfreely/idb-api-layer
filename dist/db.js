@@ -183,7 +183,7 @@ db.version(16).stores({
                 // Helper to convert Term to TermAtp and track IDs
                 const toTermAtp = (t, isQuestion) => {
                     if (!t)
-                        return { id: 0, termSnapshot: '', defSnapshot: '' };
+                        return { id: 0, term: '', def: '' };
                     if (t.id) {
                         if (isQuestion)
                             questionTermIds.add(t.id);
@@ -194,8 +194,8 @@ db.version(16).stores({
                         studysetIds.add(t.studysetId);
                     return {
                         id: t.id,
-                        termSnapshot: t.term || t.termSnapshot || '',
-                        defSnapshot: t.def || t.defSnapshot || ''
+                        term: t.term || t.termSnapshot || '',
+                        def: t.def || t.defSnapshot || ''
                     };
                 };
                 if (q.mcq) {
@@ -299,8 +299,8 @@ db.version(17).stores({
                     qData = {
                         distractors: (q.mcq.distractors || []).map((d) => ({
                             id: d.id,
-                            termSnapshot: d.termSnapshot || d.term || "",
-                            defSnapshot: d.defSnapshot || d.def || ""
+                            term: d.term || d.termSnapshot || "",
+                            def: d.def || d.defSnapshot || ""
                         })),
                         correctChoiceIndex: q.mcq.correctChoiceIndex,
                         answeredIndex: q.mcq.answeredIndex
@@ -314,8 +314,8 @@ db.version(17).stores({
                     qData = {
                         distractor: q.tfq.distractor ? {
                             id: q.tfq.distractor.id,
-                            termSnapshot: q.tfq.distractor.termSnapshot || q.tfq.distractor.term || "",
-                            defSnapshot: q.tfq.distractor.defSnapshot || q.tfq.distractor.def || ""
+                            term: q.tfq.distractor.term || q.tfq.distractor.termSnapshot || "",
+                            def: q.tfq.distractor.def || q.tfq.distractor.defSnapshot || ""
                         } : null,
                         answeredBool: q.tfq.answeredBool
                     };
@@ -339,8 +339,8 @@ db.version(17).stores({
                     await tx.table("practiceTestQuestions").add({
                         practiceTestId: pt.id,
                         termId: termAtp.id,
-                        termSnapshot: termAtp.termSnapshot || termAtp.term || "",
-                        defSnapshot: termAtp.defSnapshot || termAtp.def || "",
+                        term: termAtp.term || termAtp.termSnapshot || "",
+                        def: termAtp.def || termAtp.defSnapshot || "",
                         type: type,
                         position: i,
                         correct: correct,
@@ -354,6 +354,37 @@ db.version(17).stores({
         delete pt.questionTermIds;
         delete pt.distractorTermIds;
         await tx.table("practiceTests").put(pt);
+    });
+});
+db.version(18).stores({}).upgrade(async (tx) => {
+    await tx.table("practiceTestQuestions").toCollection().modify(q => {
+        if (q.termSnapshot !== undefined || q.defSnapshot !== undefined) {
+            q.term = q.termSnapshot ?? q.term ?? "";
+            q.def = q.defSnapshot ?? q.def ?? "";
+            delete q.termSnapshot;
+            delete q.defSnapshot;
+        }
+        if (q.data) {
+            if (q.data.distractors && Array.isArray(q.data.distractors)) {
+                for (const d of q.data.distractors) {
+                    if (d.termSnapshot !== undefined || d.defSnapshot !== undefined) {
+                        d.term = d.termSnapshot ?? d.term ?? "";
+                        d.def = d.defSnapshot ?? d.def ?? "";
+                        delete d.termSnapshot;
+                        delete d.defSnapshot;
+                    }
+                }
+            }
+            if (q.data.distractor) {
+                const d = q.data.distractor;
+                if (d.termSnapshot !== undefined || d.defSnapshot !== undefined) {
+                    d.term = d.termSnapshot ?? d.term ?? "";
+                    d.def = d.defSnapshot ?? d.def ?? "";
+                    delete d.termSnapshot;
+                    delete d.defSnapshot;
+                }
+            }
+        }
     });
 });
 export { db };
