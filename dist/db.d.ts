@@ -28,8 +28,6 @@ interface Term {
     createdAt: string;
     updatedAt: string;
     progress?: TermProgress;
-    topConfusionPairs?: TermConfusionPair[];
-    topReverseConfusionPairs?: TermConfusionPair[];
 }
 interface TermAtp {
     id: number | string;
@@ -111,15 +109,19 @@ interface TermProgress {
     defFirstReviewedAt?: string;
     defLastReviewedAt?: string;
 }
-interface TermConfusionPair {
+type PracticeTestQuestionType = "mcq" | "tfq" | "frq";
+type ReviewActivityType = "PRACTICE_TEST" | "MATCH";
+interface ReviewEvent {
     id: number;
     termId: number | string;
-    confusedTermId: number | string;
-    answeredWith: string;
-    confusedCount: number;
-    lastConfusedAt: string;
-    term?: Omit<Term, "topConfusionPairs" | "topReverseConfusionPairs">;
-    confusedTerm?: Omit<Term, "topConfusionPairs" | "topReverseConfusionPairs">;
+    practiceTestQuestionId: number | null;
+    correct: boolean;
+    answerWith: string;
+    timestamp: string;
+    answeredTermId: number | string | null;
+    practiceTestQuestionType: PracticeTestQuestionType | null;
+    reviewActivityType: ReviewActivityType;
+    answeredString: string | null;
 }
 interface Image {
     key: number;
@@ -131,8 +133,8 @@ declare const db: Dexie & {
     practiceTests: EntityTable<PracticeTest, "id">;
     practiceTestQuestions: EntityTable<PracticeTestQuestion, "id">;
     termProgress: EntityTable<TermProgress, "id">;
-    termConfusionPairs: EntityTable<TermConfusionPair, "id">;
+    reviewEvents: EntityTable<ReviewEvent, "id">;
     images: EntityTable<Image, "key">;
 };
-export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, TermConfusionPair };
+export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, ReviewEvent, PracticeTestQuestionType, ReviewActivityType };
 export { db };

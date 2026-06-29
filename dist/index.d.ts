@@ -1,12 +1,10 @@
-import { Term, TermConfusionPair, PracticeTestQuestion } from "./db";
+import { Term, PracticeTestQuestion } from "./db";
 type StudysetResolveProps = {
     terms?: boolean | TermResolveProps;
     practiceTests?: boolean;
 };
 type TermResolveProps = {
     progress?: boolean;
-    topConfusionPairs?: boolean;
-    topReverseConfusionPairs?: boolean;
     termImageUrl?: boolean;
     defImageUrl?: boolean;
 };
@@ -30,9 +28,6 @@ export declare const idbApiLayer: {
     deleteTerms: (deleteTermIDs: number[]) => Promise<void>;
     deleteStudyset: (id: number) => Promise<void>;
     updateTermProgress: (termProgressArray: any) => Promise<void>;
-    getTopConfusionPairs: (termId: any, resolveProps?: any) => Promise<TermConfusionPair[]>;
-    getTopReverseConfusionPairs: (confusedTermId: any, resolveProps?: any) => Promise<TermConfusionPair[]>;
-    recordConfusionPairs: (confusionPairs: any) => Promise<boolean>;
     recordPracticeTest: (practiceTest: any) => Promise<import("./db").PracticeTest | null>;
     getPracticeTestWithQuestions: (ptId: number) => Promise<import("./db").PracticeTest | null>;
     updatePracticeTestQuestion: (id: number, correct: boolean, userMarkedCorrect?: boolean) => Promise<PracticeTestQuestion | undefined>;
