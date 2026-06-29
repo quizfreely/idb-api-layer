@@ -6,7 +6,7 @@
  * https://github.com/quizfreely/idb-api-layer
  */
 import Dexie from 'dexie';
-import { db, Term, TermConfusionPair, TermProgress, PracticeTestQuestion } from "./db";
+import { db, Term, TermProgress, PracticeTestQuestion, ReviewEvent, PracticeTestQuestionType, ReviewActivityType } from "./db";
 import { idbLayerImg } from "./images";
 
 function isTitleValid(newTitle: string) {
@@ -28,8 +28,6 @@ type StudysetResolveProps = {
 }
 type TermResolveProps = {
     progress?: boolean;
-    topConfusionPairs?: boolean;
-    topReverseConfusionPairs?: boolean;
     termImageUrl?: boolean;
     defImageUrl?: boolean;
 }
@@ -76,27 +74,17 @@ export const idbApiLayer = {
                 true
             ).toArray();
         if (resolveProps?.progress ||
-            resolveProps?.topConfusionPairs ||
-            resolveProps?.topReverseConfusionPairs ||
             resolveProps?.termImageUrl ||
             resolveProps?.defImageUrl
         ) {
             await Promise.all(terms.map(async term => {
                 const promises: {
                     progress?: Promise<TermProgress[]>;
-                    topConfusionPairs?: Promise<TermConfusionPair[]>;
-                    topReverseConfusionPairs?: Promise<TermConfusionPair[]>;
                     termImageUrl?: Promise<string | null>;
                     defImageUrl?: Promise<string | null>;
                 } = {};
                 if (resolveProps?.progress) {
                     promises.progress = db.termProgress.where("termId").equals(term.id).toArray();
-                }
-                if (resolveProps?.topConfusionPairs) {
-                    promises.topConfusionPairs = this.getTopConfusionPairs(term.id);
-                }
-                if (resolveProps?.topReverseConfusionPairs) {
-                    promises.topReverseConfusionPairs = this.getTopReverseConfusionPairs(term.id);
                 }
                 if (resolveProps?.termImageUrl && term.termImageKey != null) {
                     promises.termImageUrl = idbLayerImg.getImageObjectUrl(term.termImageKey);
@@ -107,14 +95,10 @@ export const idbApiLayer = {
                 const results = await Promise.all(Object.entries(promises).map(async ([k, p]) => [k, await p]));
                 const resolved = Object.fromEntries(results) as {
                     progress?: TermProgress[];
-                    topConfusionPairs?: TermConfusionPair[];
-                    topReverseConfusionPairs?: TermConfusionPair[];
                     termImageUrl?: string;
                     defImageUrl?: string;
                 };
                 term.progress = resolved.progress?.[0] ?? undefined;
-                term.topConfusionPairs = resolved.topConfusionPairs;
-                term.topReverseConfusionPairs = resolved.topReverseConfusionPairs;
                 term.termImageUrl = term.termImageKey == null ? null : resolved.termImageUrl;
                 term.defImageUrl = term.defImageKey == null ? null : resolved.defImageUrl;
             })
@@ -132,12 +116,6 @@ export const idbApiLayer = {
 
         if (resolveProps?.progress) {
             term.progress = (await db.termProgress.where("termId").equals(termId).toArray())?.[0];
-        }
-        if (resolveProps?.topConfusionPairs) {
-            term.topConfusionPairs = await this.getTopConfusionPairs(term.id);
-        }
-        if (resolveProps?.topReverseConfusionPairs) {
-            term.topReverseConfusionPairs = await this.getTopReverseConfusionPairs(term.id);
         }
         if (resolveProps?.termImageUrl) {
             term.termImageUrl = term.termImageKey == null ? null : await idbLayerImg.getImageObjectUrl(term.termImageKey);
@@ -217,6 +195,7 @@ export const idbApiLayer = {
         })
         await idbLayerImg.deleteImages(imageKeysToDelete);
         await db.termProgress.where("termId").anyOf(deleteTermIDs).delete();
+        await db.reviewEvents.where("termId").anyOf(deleteTermIDs).delete();
         await db.terms.bulkDelete(deleteTermIDs);
     },
     deleteStudyset: async function (id: number) {
@@ -277,91 +256,8 @@ export const idbApiLayer = {
             }
         }
     },
-    getTopConfusionPairs: async function (termId: any, resolveProps?: any) {
-        const confusionPairs = await db.termConfusionPairs
-            .where("[termId+confusedCount]")
-            .between(
-                [termId, Dexie.minKey],
-                [termId, Dexie.maxKey],
-                true,
-                true
-            ).reverse()
-            .limit(3)
-            .toArray();
-        if (resolveProps?.confusedTerm) {
-            await Promise.all(
-                confusionPairs.map(async confusionPair => {
-                    if (typeof confusionPair.confusedTermId === "string") {
-                        console.error("getTopConfusionPairs: confusedTermId is a string (mabye a UUID), can't resolve confusedTerm");
-                        return;
-                    }
-                    confusionPair.confusedTerm = await this.getTermById(confusionPair.confusedTermId, resolveProps?.confusedTerm);
-                })
-            );
-        }
-        return confusionPairs;
-    },
-    getTopReverseConfusionPairs: async function (confusedTermId: any, resolveProps?: any) {
-        const confusionPairs = await db.termConfusionPairs
-            .where("[confusedTermId+confusedCount]")
-            .between(
-                [confusedTermId, Dexie.minKey],
-                [confusedTermId, Dexie.maxKey],
-                true,
-                true
-            ).reverse()
-            .limit(3)
-            .toArray();
-        if (resolveProps?.term) {
-            await Promise.all(
-                confusionPairs.map(async confusionPair => {
-                    if (typeof confusionPair.termId === "string") {
-                        console.error("getTopReverseConfusionPairs: termId is a string (mabye a UUID), can't resolve term");
-                        return;
-                    }
-                    confusionPair.term = await this.getTermById(confusionPair.termId, resolveProps?.term);
-                })
-            );
-        }
-        return confusionPairs;
-    },
-    recordConfusionPairs: async function (confusionPairs: any) {
-        for (const confusionPairInput of confusionPairs) {
-            if (confusionPairInput.termId == confusionPairInput.confusedTermId) {
-                console.log("Skipped confusion pair with same term & confused term ID when recording confusion pairs");
-                continue;
-            }
-
-            const existingRow = await db.termConfusionPairs.where(
-                "[termId+confusedTermId]"
-            ).equals([
-                confusionPairInput.termId,
-                confusionPairInput.confusedTermId,
-            ]).filter(
-                row => row.answeredWith == confusionPairInput.answeredWith
-            ).toArray();
-            if (existingRow.length > 0) {
-                db.termConfusionPairs.update(
-                    existingRow[0].id,
-                    {
-                        confusedCount: existingRow[0].confusedCount + confusionPairInput.confusedCountIncrease,
-                        lastConfusedAt: confusionPairInput.confusedAt
-                    }
-                );
-            } else {
-                db.termConfusionPairs.add({
-                    termId: confusionPairInput.termId,
-                    confusedTermId: confusionPairInput.confusedTermId,
-                    answeredWith: confusionPairInput.answeredWith,
-                    confusedCount: confusionPairInput.confusedCountIncrease,
-                    lastConfusedAt: confusionPairInput.confusedAt
-                });
-            }
-        }
-        return true;
-    },
     recordPracticeTest: async function (practiceTest: any) {
-        return await db.transaction('rw', [db.practiceTests, db.practiceTestQuestions, db.termProgress, db.terms], async () => {
+        return await db.transaction('rw', [db.practiceTests, db.practiceTestQuestions, db.termProgress, db.terms, db.reviewEvents], async () => {
             const rnISOString = (new Date()).toISOString();
             const termProgressMap = new Map<any, any>();
             const studysetIds = new Set<number | string>();
@@ -440,6 +336,43 @@ export const idbApiLayer = {
                     if (termId == null) continue;
                     involvedTermIds.add(termId);
 
+                    let answeredTermId: number | string | null = null;
+                    let answeredString: string | null = null;
+
+                    if (type === "mcq") {
+                        const correctChoiceIndex = q.mcq.correctChoiceIndex;
+                        const answeredIndex = q.mcq.answeredIndex;
+                        const distractors = q.mcq.distractors || [];
+
+                        if (answeredIndex === correctChoiceIndex) {
+                            answeredTermId = termId;
+                        } else if (answeredIndex != null) {
+                            if (answeredIndex < correctChoiceIndex) {
+                                answeredTermId = distractors[answeredIndex]?.id ?? null;
+                            } else {
+                                answeredTermId = distractors[answeredIndex - 1]?.id ?? null;
+                            }
+                        }
+                    } else if (type === "tfq") {
+                        const answeredBool = q.tfq.answeredBool;
+                        const distractorTermId = q.tfq.distractor?.id;
+
+                        if (correct) {
+                            answeredTermId = termId;
+                        } else {
+                            if (answeredBool === true) {
+                                // user answered "true", but it was false, so they picked the distractor
+                                answeredTermId = distractorTermId ?? null;
+                            } else {
+                                // user answered "false", but it was true, so they didn't pick a distractor
+                                answeredTermId = null;
+                            }
+                        }
+                    } else if (type === "frq") {
+                        answeredString = q.frq.answeredString || "";
+                        answeredTermId = null;
+                    }
+
                     questionsToInsert.push({
                         termId,
                         term,
@@ -448,7 +381,17 @@ export const idbApiLayer = {
                         position: i,
                         correct,
                         answerWith,
-                        data: qData
+                        data: qData,
+                        reviewEventData: {
+                            termId,
+                            correct,
+                            answerWith: answerWith || "",
+                            timestamp: practiceTest.timestamp || rnISOString,
+                            answeredTermId,
+                            practiceTestQuestionType: type,
+                            reviewActivityType: "PRACTICE_TEST" as ReviewActivityType,
+                            answeredString
+                        }
                     });
 
                     let tp = termProgressMap.get(termId);
@@ -539,7 +482,14 @@ export const idbApiLayer = {
 
             for (const q of questionsToInsert) {
                 q.practiceTestId = ptId;
-                await db.practiceTestQuestions.add(q);
+                const reviewEventData = q.reviewEventData;
+                delete q.reviewEventData;
+
+                const questionId = await db.practiceTestQuestions.add(q);
+                await db.reviewEvents.add({
+                    ...reviewEventData,
+                    practiceTestQuestionId: questionId
+                });
             }
 
             return await this.getPracticeTestWithQuestions(ptId);
@@ -554,7 +504,7 @@ export const idbApiLayer = {
         return pt;
     },
     updatePracticeTestQuestion: async function (id: number, correct: boolean, userMarkedCorrect?: boolean) {
-        return await db.transaction('rw', [db.practiceTests, db.practiceTestQuestions, db.termProgress], async () => {
+        return await db.transaction('rw', [db.practiceTests, db.practiceTestQuestions, db.termProgress, db.reviewEvents], async () => {
             const question = await db.practiceTestQuestions.get(id);
             if (!question) throw new Error("Question not found");
 
@@ -574,6 +524,17 @@ export const idbApiLayer = {
                 correct: isCorrect,
                 data: newData
             });
+
+            // Update review event
+            const reviewEvents = await db.reviewEvents.where("practiceTestQuestionId").equals(id).toArray();
+            if (reviewEvents.length > 1) {
+                console.warn(`(idbApiLayer.updatePracticeTestQuestion) Multiple review events found for practiceTestQuestionId ${id}. Updating the first one.`);
+            }
+            if (reviewEvents.length > 0) {
+                await db.reviewEvents.update(reviewEvents[0].id, {
+                    correct: isCorrect
+                });
+            }
 
             // Update practice test accuracy
             if (wasCorrect !== isCorrect) {

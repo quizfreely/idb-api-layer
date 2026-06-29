@@ -387,4 +387,8 @@ db.version(18).stores({}).upgrade(async (tx) => {
         }
     });
 });
+db.version(19).stores({
+    termConfusionPairs: null,
+    reviewEvents: "++id, termId, practiceTestQuestionId, timestamp, answeredTermId, practiceTestQuestionType, reviewActivityType"
+});
 export { db };

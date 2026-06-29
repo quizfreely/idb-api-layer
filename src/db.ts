@@ -31,8 +31,6 @@ interface Term {
     createdAt: string
     updatedAt: string
     progress?: TermProgress
-    topConfusionPairs?: TermConfusionPair[]
-    topReverseConfusionPairs?: TermConfusionPair[]
 }
 
 interface TermAtp {
@@ -126,15 +124,20 @@ interface TermProgress {
     defLastReviewedAt?: string
 }
 
-interface TermConfusionPair {
+type PracticeTestQuestionType = "mcq" | "tfq" | "frq";
+type ReviewActivityType = "PRACTICE_TEST" | "MATCH";
+
+interface ReviewEvent {
     id: number
     termId: number | string
-    confusedTermId: number | string
-    answeredWith: string
-    confusedCount: number
-    lastConfusedAt: string
-    term?: Omit<Term, "topConfusionPairs" | "topReverseConfusionPairs">
-    confusedTerm?: Omit<Term, "topConfusionPairs" | "topReverseConfusionPairs">
+    practiceTestQuestionId: number | null
+    correct: boolean
+    answerWith: string
+    timestamp: string
+    answeredTermId: number | string | null
+    practiceTestQuestionType: PracticeTestQuestionType | null
+    reviewActivityType: ReviewActivityType
+    answeredString: string | null
 }
 
 interface Image {
@@ -163,8 +166,8 @@ const db = new Dexie("quizfreelydata") as Dexie & {
         TermProgress,
         "id"
     >
-    termConfusionPairs: EntityTable<
-        TermConfusionPair,
+    reviewEvents: EntityTable<
+        ReviewEvent,
         "id"
     >
     images: EntityTable<
@@ -566,5 +569,10 @@ db.version(18).stores({}).upgrade(async tx => {
     });
 });
 
-export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, TermConfusionPair }
+db.version(19).stores({
+    termConfusionPairs: null,
+    reviewEvents: "++id, termId, practiceTestQuestionId, timestamp, answeredTermId, practiceTestQuestionType, reviewActivityType"
+});
+
+export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, ReviewEvent, PracticeTestQuestionType, ReviewActivityType }
 export { db };
