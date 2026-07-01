@@ -141,13 +141,14 @@ export const idbApiLayer = {
     },
     getTermsByIds: async function (termIds: number[], resolveProps?: TermResolveProps) {
         const rawTerms = await db.terms.bulkGet(termIds);
-        const terms = rawTerms.filter((t): t is NonNullable<typeof t> => t !== undefined);
+        const terms: (Term | null)[] = rawTerms.map(t => t ?? null);
 
         if (resolveProps?.progress ||
             resolveProps?.termImageUrl ||
             resolveProps?.defImageUrl
         ) {
             await Promise.all(terms.map(async term => {
+                if (term == null) return;
                 const promises: {
                     progress?: Promise<TermProgress[]>;
                     termImageUrl?: Promise<string | null>;
