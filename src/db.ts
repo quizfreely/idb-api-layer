@@ -16,6 +16,7 @@ interface Studyset {
     updatedAt: string
     terms?: Term[]
     practiceTests?: PracticeTest[]
+    matchActivities?: MatchActivity[]
 }
 
 interface Term {
@@ -127,12 +128,22 @@ interface TermProgress {
 type PracticeTestQuestionType = "mcq" | "tfq" | "frq";
 type ReviewActivityType = "PRACTICE_TEST" | "MATCH";
 
+interface MatchActivity {
+    id: number
+    durationMs: number
+    endTimestamp: string
+    studysetIds: (number | string)[]
+    termIds?: (number | string)[]
+    incorrectPairIds?: (number | string)[][]
+}
+
 interface ReviewEvent {
     id: number
     termId: number | string
     practiceTestQuestionId: number | null
+    matchActivityId: number | null
     correct: boolean
-    answerWith: string
+    answerWith: string | null
     timestamp: string
     answeredTermId: number | string | null
     practiceTestQuestionType: PracticeTestQuestionType | null
@@ -168,6 +179,10 @@ const db = new Dexie("quizfreelydata") as Dexie & {
     >
     reviewEvents: EntityTable<
         ReviewEvent,
+        "id"
+    >
+    matchActivities: EntityTable<
+        MatchActivity,
         "id"
     >
     images: EntityTable<
@@ -573,6 +588,10 @@ db.version(19).stores({
     termConfusionPairs: null,
     reviewEvents: "++id, termId, practiceTestQuestionId, timestamp, answeredTermId, practiceTestQuestionType, reviewActivityType"
 });
+db.version(20).stores({
+    matchActivities: "++id, *studysetIds, endTimestamp",
+    reviewEvents: "++id, termId, practiceTestQuestionId, matchActivityId, timestamp, answeredTermId, practiceTestQuestionType, reviewActivityType"
+});
 
-export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, ReviewEvent, PracticeTestQuestionType, ReviewActivityType }
+export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, ReviewEvent, MatchActivity, PracticeTestQuestionType, ReviewActivityType }
 export { db };
