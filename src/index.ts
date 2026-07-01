@@ -139,6 +139,43 @@ export const idbApiLayer = {
 
         return term;
     },
+    getTermsByIds: async function (termIds: number[], resolveProps?: TermResolveProps) {
+        const rawTerms = await db.terms.bulkGet(termIds);
+        const terms = rawTerms.filter((t): t is NonNullable<typeof t> => t !== undefined);
+
+        if (resolveProps?.progress ||
+            resolveProps?.termImageUrl ||
+            resolveProps?.defImageUrl
+        ) {
+            await Promise.all(terms.map(async term => {
+                const promises: {
+                    progress?: Promise<TermProgress[]>;
+                    termImageUrl?: Promise<string | null>;
+                    defImageUrl?: Promise<string | null>;
+                } = {};
+                if (resolveProps?.progress) {
+                    promises.progress = db.termProgress.where("termId").equals(term.id).toArray();
+                }
+                if (resolveProps?.termImageUrl && term.termImageKey != null) {
+                    promises.termImageUrl = idbLayerImg.getImageObjectUrl(term.termImageKey);
+                }
+                if (resolveProps?.defImageUrl && term.defImageKey != null) {
+                    promises.defImageUrl = idbLayerImg.getImageObjectUrl(term.defImageKey);
+                }
+                const results = await Promise.all(Object.entries(promises).map(async ([k, p]) => [k, await p]));
+                const resolved = Object.fromEntries(results) as {
+                    progress?: TermProgress[];
+                    termImageUrl?: string;
+                    defImageUrl?: string;
+                };
+                term.progress = resolved.progress?.[0] ?? undefined;
+                term.termImageUrl = term.termImageKey == null ? null : resolved.termImageUrl;
+                term.defImageUrl = term.defImageKey == null ? null : resolved.defImageUrl;
+            }));
+        }
+
+        return terms;
+    },
     createStudyset: async function ({ title, draft }: { title: string, draft: boolean }) {
         const rnISOString = (new Date()).toISOString();
         const newId = await db.studysets.add({
