@@ -1,12 +1,17 @@
-import { Term, PracticeTestQuestion } from "./db";
+import { Term, PracticeTestQuestion, MatchActivity } from "./db";
 type StudysetResolveProps = {
     terms?: boolean | TermResolveProps;
     practiceTests?: boolean;
+    matchActivities?: boolean;
 };
 type TermResolveProps = {
     progress?: boolean;
     termImageUrl?: boolean;
     defImageUrl?: boolean;
+};
+type MatchActivityResolveProps = {
+    termIds?: boolean;
+    incorrectPairIds?: boolean;
 };
 export * from "./db";
 export * from "./images";
@@ -32,4 +37,7 @@ export declare const idbApiLayer: {
     getPracticeTestWithQuestions: (ptId: number) => Promise<import("./db").PracticeTest | null>;
     updatePracticeTestQuestion: (id: number, correct: boolean, userMarkedCorrect?: boolean) => Promise<PracticeTestQuestion | undefined>;
     getPracticeTestsByTermId: (termId: number | string) => Promise<import("./db").PracticeTest[]>;
+    getMatchActivityById: (id: number, resolveProps?: MatchActivityResolveProps) => Promise<MatchActivity | null>;
+    getMatchActivitiesByStudysetId: (studysetId: number | string) => Promise<MatchActivity[]>;
+    recordMatchActivity: (input: any) => Promise<MatchActivity | null>;
 };

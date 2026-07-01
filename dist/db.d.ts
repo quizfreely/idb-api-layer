@@ -14,6 +14,7 @@ interface Studyset {
     updatedAt: string;
     terms?: Term[];
     practiceTests?: PracticeTest[];
+    matchActivities?: MatchActivity[];
 }
 interface Term {
     id: number;
@@ -111,12 +112,21 @@ interface TermProgress {
 }
 type PracticeTestQuestionType = "mcq" | "tfq" | "frq";
 type ReviewActivityType = "PRACTICE_TEST" | "MATCH";
+interface MatchActivity {
+    id: number;
+    durationMs: number;
+    endTimestamp: string;
+    studysetIds: (number | string)[];
+    termIds?: (number | string)[];
+    incorrectPairIds?: (number | string)[][];
+}
 interface ReviewEvent {
     id: number;
     termId: number | string;
     practiceTestQuestionId: number | null;
+    matchActivityId: number | null;
     correct: boolean;
-    answerWith: string;
+    answerWith: string | null;
     timestamp: string;
     answeredTermId: number | string | null;
     practiceTestQuestionType: PracticeTestQuestionType | null;
@@ -134,7 +144,8 @@ declare const db: Dexie & {
     practiceTestQuestions: EntityTable<PracticeTestQuestion, "id">;
     termProgress: EntityTable<TermProgress, "id">;
     reviewEvents: EntityTable<ReviewEvent, "id">;
+    matchActivities: EntityTable<MatchActivity, "id">;
     images: EntityTable<Image, "key">;
 };
-export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, ReviewEvent, PracticeTestQuestionType, ReviewActivityType };
+export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, ReviewEvent, MatchActivity, PracticeTestQuestionType, ReviewActivityType };
 export { db };

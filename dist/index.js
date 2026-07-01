@@ -39,6 +39,11 @@ export const idbApiLayer = {
                     .sortBy("position");
             }));
         }
+        if (resolveProps?.matchActivities) {
+            studysets[0].matchActivities = await db.matchActivities.where("studysetIds").equals(id).toArray();
+            /* local timestamps are ISO strings in UTC, so alphanumeric/lexical sorting is the same as chronological sorting */
+            studysets[0].matchActivities?.sort((a, b) => b.endTimestamp.localeCompare(a.endTimestamp));
+        }
         return studysets[0];
     },
     getTermsByStudysetId: async function (studysetId, resolveProps) {
@@ -521,5 +526,147 @@ export const idbApiLayer = {
         }));
         filteredTests.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
         return filteredTests;
+    },
+    getMatchActivityById: async function (id, resolveProps) {
+        const activity = await db.matchActivities.get(id);
+        if (!activity)
+            return null;
+        if (resolveProps?.termIds) {
+            const reviewEvents = await db.reviewEvents
+                .where("matchActivityId").equals(id)
+                .and(re => re.correct === true)
+                .toArray();
+            activity.termIds = reviewEvents.map(re => re.termId);
+        }
+        if (resolveProps?.incorrectPairIds) {
+            const reviewEvents = await db.reviewEvents
+                .where("matchActivityId").equals(id)
+                .and(re => re.correct === false)
+                .toArray();
+            activity.incorrectPairIds = reviewEvents.map(re => [re.termId, re.answeredTermId]);
+        }
+        return activity;
+    },
+    getMatchActivitiesByStudysetId: async function (studysetId) {
+        const activities = await db.matchActivities.where("studysetIds").equals(studysetId).toArray();
+        activities.sort((a, b) => b.endTimestamp.localeCompare(a.endTimestamp));
+        return activities;
+    },
+    recordMatchActivity: async function (input) {
+        return await db.transaction('rw', [db.matchActivities, db.reviewEvents, db.termProgress, db.terms], async () => {
+            const rnISOString = (new Date()).toISOString();
+            const termIds = input.termIds || [];
+            const incorrectPairIds = input.incorrectPairIds || [];
+            const durationMs = input.durationMs;
+            const studysetIds = new Set();
+            // Derive studysetIds from terms (only from termIds array per backend instructions)
+            const termIdsForLookup = termIds.filter(id => typeof id === 'number');
+            if (termIdsForLookup.length > 0) {
+                const termsForLookup = await db.terms.bulkGet(termIdsForLookup);
+                termsForLookup.forEach(t => { if (t?.studysetId)
+                    studysetIds.add(t.studysetId); });
+            }
+            const termProgressMap = new Map();
+            const matchActivityRecord = {
+                durationMs,
+                endTimestamp: rnISOString,
+                studysetIds: Array.from(studysetIds)
+            };
+            const matchId = await db.matchActivities.add(matchActivityRecord);
+            const reviewEventsToInsert = [];
+            for (const termId of termIds) {
+                reviewEventsToInsert.push({
+                    termId,
+                    matchActivityId: matchId,
+                    correct: true,
+                    answerWith: null,
+                    timestamp: rnISOString,
+                    answeredTermId: termId,
+                    practiceTestQuestionType: null,
+                    reviewActivityType: "MATCH",
+                    answeredString: null
+                });
+                let tp = termProgressMap.get(termId);
+                if (!tp) {
+                    tp = {
+                        termId,
+                        termReviewedAt: rnISOString,
+                        termCorrectIncrease: 1,
+                        termIncorrectIncrease: 0,
+                        defCorrectIncrease: 0,
+                        defIncorrectIncrease: 0
+                    };
+                    termProgressMap.set(termId, tp);
+                }
+                else {
+                    tp.termCorrectIncrease += 1;
+                    tp.termReviewedAt = rnISOString;
+                }
+            }
+            for (const pair of incorrectPairIds) {
+                if (!Array.isArray(pair) || pair.length < 2) {
+                    console.warn("(idbApiLayer.recordMatchActivity) invalid incorrect pair: expected at least 2 elements", pair);
+                    continue;
+                }
+                const termId = pair[0];
+                const answeredTermId = pair[1];
+                reviewEventsToInsert.push({
+                    termId,
+                    matchActivityId: matchId,
+                    correct: false,
+                    answerWith: null,
+                    timestamp: rnISOString,
+                    answeredTermId: answeredTermId,
+                    practiceTestQuestionType: null,
+                    reviewActivityType: "MATCH",
+                    answeredString: null
+                });
+                let tp = termProgressMap.get(termId);
+                if (!tp) {
+                    tp = {
+                        termId,
+                        termReviewedAt: rnISOString,
+                        termCorrectIncrease: 0,
+                        termIncorrectIncrease: 1,
+                        defCorrectIncrease: 0,
+                        defIncorrectIncrease: 0
+                    };
+                    termProgressMap.set(termId, tp);
+                }
+                else {
+                    tp.termIncorrectIncrease += 1;
+                    tp.termReviewedAt = rnISOString;
+                }
+            }
+            if (reviewEventsToInsert.length > 0) {
+                await db.reviewEvents.bulkAdd(reviewEventsToInsert);
+            }
+            // Update term progress
+            for (const tp of termProgressMap.values()) {
+                const existingProgress = await db.termProgress.where("termId").equals(tp.termId).toArray();
+                if (existingProgress?.length > 0) {
+                    await db.termProgress.update(existingProgress[0].id, {
+                        termLastReviewedAt: tp.termReviewedAt,
+                        termReviewCount: (existingProgress[0]?.termReviewCount ?? 0) + (tp.termCorrectIncrease + tp.termIncorrectIncrease),
+                        termCorrectCount: (existingProgress[0].termCorrectCount) + (tp.termCorrectIncrease),
+                        termIncorrectCount: (existingProgress[0].termIncorrectCount) + (tp.termIncorrectIncrease),
+                    });
+                }
+                else {
+                    await db.termProgress.add({
+                        termId: tp.termId,
+                        termFirstReviewedAt: tp.termReviewedAt,
+                        termLastReviewedAt: tp.termReviewedAt,
+                        termReviewCount: tp.termCorrectIncrease + tp.termIncorrectIncrease,
+                        defReviewCount: 0,
+                        termCorrectCount: tp.termCorrectIncrease,
+                        termIncorrectCount: tp.termIncorrectIncrease,
+                        defCorrectCount: 0,
+                        defIncorrectCount: 0
+                    });
+                }
+            }
+            return await this.getMatchActivityById(matchId, { termIds: true, incorrectPairIds: true });
+        });
     }
 };
