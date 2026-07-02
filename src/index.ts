@@ -671,18 +671,19 @@ export const idbApiLayer = {
 
             const studysetIds = new Set<number | string>();
 
-            // Derive studysetIds from local term IDs (numeric)
-            const termIdsForLookup = termIds.filter(id => typeof id === 'number') as number[];
-            if (termIdsForLookup.length > 0) {
+            // Derive studysetIds from local term IDs (numeric strings or numbers without a dash)
+            const localTermIds = termIds.filter(id => (typeof id === 'number') || (typeof id === 'string' && !id.includes('-')));
+            if (localTermIds.length > 0) {
+                const termIdsForLookup = localTermIds.map(id => Number(id)) as number[];
                 const termsForLookup = await db.terms.bulkGet(termIdsForLookup);
-                termsForLookup.forEach(t => { if (t?.studysetId) studysetIds.add(t.studysetId); });
+                termsForLookup.forEach(t => { if (t?.studysetId != null) studysetIds.add(t.studysetId); });
             }
 
             // Derive studysetIds from cloud term IDs (UUIDs contain a hyphen/dash)
             const cloudTermIds = termIds.filter(id => typeof id === 'string' && id.includes('-')) as string[];
             if (cloudTermIds.length > 0 && getCloudStudysetIds) {
                 const cloudStudysetIds = await getCloudStudysetIds(cloudTermIds);
-                cloudStudysetIds.forEach(id => { if (id) studysetIds.add(id); });
+                cloudStudysetIds.forEach(id => { if (id != null) studysetIds.add(id); });
             }
             
             const termProgressMap = new Map<any, any>();
