@@ -662,7 +662,7 @@ export const idbApiLayer = {
         activities.sort((a, b) => b.endTimestamp.localeCompare(a.endTimestamp));
         return activities;
     },
-    recordMatchActivity: async function (input: any) {
+    recordMatchActivity: async function (input: any, getCloudStudysetIds?: (cloudTermIds: string[]) => Promise<(number | string)[]>) {
         return await db.transaction('rw', [db.matchActivities, db.reviewEvents, db.termProgress, db.terms], async () => {
             const rnISOString = (new Date()).toISOString();
             const termIds: (number | string)[] = input.termIds || [];
@@ -671,11 +671,18 @@ export const idbApiLayer = {
 
             const studysetIds = new Set<number | string>();
 
-            // Derive studysetIds from terms (only from termIds array per backend instructions)
+            // Derive studysetIds from local term IDs (numeric)
             const termIdsForLookup = termIds.filter(id => typeof id === 'number') as number[];
             if (termIdsForLookup.length > 0) {
                 const termsForLookup = await db.terms.bulkGet(termIdsForLookup);
                 termsForLookup.forEach(t => { if (t?.studysetId) studysetIds.add(t.studysetId); });
+            }
+
+            // Derive studysetIds from cloud term IDs (UUIDs contain a hyphen/dash)
+            const cloudTermIds = termIds.filter(id => typeof id === 'string' && id.includes('-')) as string[];
+            if (cloudTermIds.length > 0 && getCloudStudysetIds) {
+                const cloudStudysetIds = await getCloudStudysetIds(cloudTermIds);
+                cloudStudysetIds.forEach(id => { if (id) studysetIds.add(id); });
             }
             
             const termProgressMap = new Map<any, any>();
