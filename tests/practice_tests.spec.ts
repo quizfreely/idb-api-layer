@@ -44,7 +44,7 @@ test('practice tests: recording and retrieval in studyset', async ({ page }) => 
   expect(result.studysetWithTests?.practiceTests?.[0].timestamp).toBe("2024-01-02T10:00:00.000Z");
   expect(result.studysetWithTests?.practiceTests?.[0].questionsCorrect).toBe(0);
   expect(result.studysetWithTests?.practiceTests?.[0].questions).toHaveLength(1);
-  expect(result.studysetWithTests?.practiceTests?.[0].questions[0].termId).toBeDefined();
+  expect(result.studysetWithTests?.practiceTests?.[0].questions[0].mcq?.term.id).toBeDefined();
 
   expect(result.studysetWithTests?.practiceTests?.[1].timestamp).toBe("2024-01-01T10:00:00.000Z");
   expect(result.studysetWithTests?.practiceTests?.[1].questionsCorrect).toBe(1);

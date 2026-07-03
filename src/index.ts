@@ -6,8 +6,43 @@
  * https://github.com/quizfreely/idb-api-layer
  */
 import Dexie from 'dexie';
-import { db, Term, TermProgress, PracticeTestQuestion, ReviewEvent, MatchActivity, PracticeTestQuestionType, ReviewActivityType } from "./db";
+import { db, Term, TermProgress, PracticeTestQuestion, ReviewEvent, MatchActivity, MCQData, TFQData, FRQData, Question, PracticeTestQuestionType, ReviewActivityType } from "./db";
 import { idbLayerImg } from "./images";
+
+function toGraphQLQuestion(q: PracticeTestQuestion): Question {
+    const term = { id: q.termId, term: q.term, def: q.def };
+    const result: Question = { id: q.id };
+    if (q.type === "mcq") {
+        const data = q.data as MCQData;
+        result.mcq = {
+            answerWith: q.answerWith,
+            term,
+            correct: q.correct,
+            correctChoiceIndex: data.correctChoiceIndex,
+            answeredIndex: data.answeredIndex,
+            distractors: data.distractors
+        };
+    } else if (q.type === "tfq") {
+        const data = q.data as TFQData;
+        result.tfq = {
+            answerWith: q.answerWith,
+            term,
+            correct: q.correct,
+            answeredBool: data.answeredBool,
+            distractor: data.distractor ?? undefined
+        };
+    } else if (q.type === "frq") {
+        const data = q.data as FRQData;
+        result.frq = {
+            answerWith: q.answerWith,
+            term,
+            correct: q.correct,
+            answeredString: data.answeredString,
+            userMarkedCorrect: data.userMarkedCorrect
+        };
+    }
+    return result;
+}
 
 function isTitleValid(newTitle: string) {
     return (
@@ -61,9 +96,10 @@ export const idbApiLayer = {
             );
 
             await Promise.all(studysets[0].practiceTests.map(async pt => {
-                pt.questions = await db.practiceTestQuestions
+                const rawQuestions = await db.practiceTestQuestions
                     .where("practiceTestId").equals(pt.id)
                     .sortBy("position");
+                pt.questions = rawQuestions.map(toGraphQLQuestion);
             }));
         }
         if (resolveProps?.matchActivities) {
@@ -559,9 +595,10 @@ export const idbApiLayer = {
     getPracticeTestWithQuestions: async function(ptId: number) {
         const pt = await db.practiceTests.get(ptId);
         if (!pt) return null;
-        pt.questions = await db.practiceTestQuestions
+        const rawQuestions = await db.practiceTestQuestions
             .where("practiceTestId").equals(ptId)
             .sortBy("position");
+        pt.questions = rawQuestions.map(toGraphQLQuestion);
         return pt;
     },
     updatePracticeTestQuestion: async function (id: number, correct: boolean, userMarkedCorrect?: boolean) {
@@ -573,7 +610,7 @@ export const idbApiLayer = {
             const isCorrect = correct;
 
             if (wasCorrect === isCorrect && question.type === "frq" && (question.data as any).userMarkedCorrect === userMarkedCorrect) {
-                return question;
+                return toGraphQLQuestion(question);
             }
 
             // Update question
@@ -621,7 +658,8 @@ export const idbApiLayer = {
                 }
             }
 
-            return await db.practiceTestQuestions.get(id);
+            const updatedQuestion = await db.practiceTestQuestions.get(id);
+            return updatedQuestion ? toGraphQLQuestion(updatedQuestion) : undefined;
         });
     },
     getPracticeTestsByTermId: async function (termId: number | string) {
@@ -637,9 +675,10 @@ export const idbApiLayer = {
         const filteredTests = tests.filter((t): t is NonNullable<typeof t> => t !== undefined);
 
         await Promise.all(filteredTests.map(async pt => {
-            pt.questions = await db.practiceTestQuestions
+            const rawQuestions = await db.practiceTestQuestions
                 .where("practiceTestId").equals(pt.id)
                 .sortBy("position");
+            pt.questions = rawQuestions.map(toGraphQLQuestion);
         }));
 
         filteredTests.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
