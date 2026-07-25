@@ -84,3 +84,38 @@ test('practice tests: update question and retrieval by term', async ({ page }) =
   expect(result.updatedQuestion.correct).toBe(true);
   expect(result.updatedQuestion.data.userMarkedCorrect).toBe(true);
 });
+
+test('practice tests: update FRQ via userMarkedCorrect only', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const sid = await window.idbApiLayer.createStudyset({ title: "S", draft: false });
+    await window.idbApiLayer.createTerms(sid, [
+      { term: "T1", def: "D1", sortOrder: 0 }
+    ]);
+    const terms = await window.idbApiLayer.getTermsByStudysetId(sid);
+    const t1 = { id: terms[0].id, term: terms[0].term, def: terms[0].def };
+
+    // Record FRQ as incorrect (correct: false, no userMarkedCorrect)
+    const pt = await window.idbApiLayer.recordPracticeTest({
+        questions: [
+          { frq: { term: t1, answerWith: "DEF", correct: false, answeredString: "wrong" } }
+        ]
+    });
+
+    const questionId = pt.questions[0].id;
+    const ptBefore = await window.db.practiceTests.get(pt.id);
+
+    // Update with same correct=false but userMarkedCorrect=true
+    await window.idbApiLayer.updatePracticeTestQuestion(questionId, false, true);
+
+    const updatedPt = await window.db.practiceTests.get(pt.id);
+    const updatedQuestion = await window.db.practiceTestQuestions.get(questionId);
+
+    return { ptBefore, updatedPt, updatedQuestion };
+  });
+
+  expect(result.ptBefore.questionsCorrect).toBe(0);
+  expect(result.updatedPt.questionsCorrect).toBe(1);
+  expect(result.updatedPt.questionsTotal).toBe(1);
+  expect(result.updatedQuestion.correct).toBe(false);
+  expect(result.updatedQuestion.data.userMarkedCorrect).toBe(true);
+});

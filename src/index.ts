@@ -609,6 +609,16 @@ export const idbApiLayer = {
             const wasCorrect = question.correct;
             const isCorrect = correct;
 
+            // FRQ overall correctness accounts for userMarkedCorrect (same logic as recordPracticeTest)
+            let wasOverallCorrect = wasCorrect;
+            let isOverallCorrect = isCorrect;
+            if (question.type === "frq") {
+                const existingUserMarkedCorrect = !!(question.data as any).userMarkedCorrect;
+                const newUserMarkedCorrect = userMarkedCorrect !== undefined ? !!userMarkedCorrect : existingUserMarkedCorrect;
+                wasOverallCorrect = wasCorrect || existingUserMarkedCorrect;
+                isOverallCorrect = isCorrect || newUserMarkedCorrect;
+            }
+
             if (wasCorrect === isCorrect && question.type === "frq" && (question.data as any).userMarkedCorrect === userMarkedCorrect) {
                 return toGraphQLQuestion(question);
             }
@@ -635,24 +645,24 @@ export const idbApiLayer = {
             }
 
             // Update practice test accuracy
-            if (wasCorrect !== isCorrect) {
+            if (wasOverallCorrect !== isOverallCorrect) {
                 const pt = await db.practiceTests.get(question.practiceTestId);
                 if (pt) {
                     await db.practiceTests.update(pt.id, {
-                        questionsCorrect: pt.questionsCorrect + (isCorrect ? 1 : -1)
+                        questionsCorrect: pt.questionsCorrect + (isOverallCorrect ? 1 : -1)
                     });
                 }
 
-                // Update term progress
+                // Update term progress (uses overall correctness, same logic as recordPracticeTest)
                 const existingProgress = await db.termProgress.where("termId").equals(question.termId).toArray();
                 if (existingProgress?.length > 0) {
                     const changes: any = {};
                     if (question.answerWith === "DEF") {
-                        changes.defCorrectCount = existingProgress[0].defCorrectCount + (isCorrect ? 1 : -1);
-                        changes.defIncorrectCount = existingProgress[0].defIncorrectCount + (isCorrect ? -1 : 1);
+                        changes.defCorrectCount = existingProgress[0].defCorrectCount + (isOverallCorrect ? 1 : -1);
+                        changes.defIncorrectCount = existingProgress[0].defIncorrectCount + (isOverallCorrect ? -1 : 1);
                     } else {
-                        changes.termCorrectCount = existingProgress[0].termCorrectCount + (isCorrect ? 1 : -1);
-                        changes.termIncorrectCount = existingProgress[0].termIncorrectCount + (isCorrect ? -1 : 1);
+                        changes.termCorrectCount = existingProgress[0].termCorrectCount + (isOverallCorrect ? 1 : -1);
+                        changes.termIncorrectCount = existingProgress[0].termIncorrectCount + (isOverallCorrect ? -1 : 1);
                     }
                     await db.termProgress.update(existingProgress[0].id, changes);
                 }
