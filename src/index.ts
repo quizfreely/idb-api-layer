@@ -6,7 +6,7 @@
  * https://github.com/quizfreely/idb-api-layer
  */
 import Dexie from 'dexie';
-import { db, Term, TermProgress, PracticeTestQuestion, ReviewEvent, MatchActivity, MCQData, TFQData, FRQData, Question, PracticeTestQuestionType, ReviewActivityType } from "./db";
+import { db, Studyset, Term, TermProgress, PracticeTestQuestion, ReviewEvent, MatchActivity, MCQData, TFQData, FRQData, Question, PracticeTestQuestionType, ReviewActivityType } from "./db";
 import { idbLayerImg } from "./images";
 
 function toGraphQLQuestion(q: PracticeTestQuestion): Question {
@@ -70,6 +70,88 @@ type TermResolveProps = {
 type MatchActivityResolveProps = {
     termIds?: boolean;
     incorrectPairIds?: boolean;
+}
+
+type ActivityEntry = {
+    studysetId: number | string;
+    activityTs: string;
+};
+
+async function collectRecentActivityEntries(): Promise<ActivityEntry[]> {
+    const activityMap = new Map<number | string, string>();
+
+    const practiceTests = await db.practiceTests.toArray();
+    for (const pt of practiceTests) {
+        for (const sid of pt.studysetIds) {
+            const existing = activityMap.get(sid);
+            if (!existing || pt.timestamp > existing) {
+                activityMap.set(sid, pt.timestamp);
+            }
+        }
+    }
+
+    const matchActivities = await db.matchActivities.toArray();
+    for (const ma of matchActivities) {
+        for (const sid of ma.studysetIds) {
+            const existing = activityMap.get(sid);
+            if (!existing || ma.endTimestamp > existing) {
+                activityMap.set(sid, ma.endTimestamp);
+            }
+        }
+    }
+
+    const entries: ActivityEntry[] = [];
+    for (const [sid, ts] of activityMap) {
+        entries.push({ studysetId: sid, activityTs: ts });
+    }
+
+    /* local timestamps are ISO strings in UTC, so alphanumeric/lexical sorting is the same as chronological sorting */
+    entries.sort((a, b) => {
+        const tsCmp = b.activityTs.localeCompare(a.activityTs);
+        if (tsCmp !== 0) return tsCmp;
+        if (typeof a.studysetId === 'number' && typeof b.studysetId === 'number') {
+            return b.studysetId - a.studysetId;
+        }
+        return String(b.studysetId).localeCompare(String(a.studysetId));
+    });
+
+    return entries;
+}
+
+function decodeActivityCursor(cursor: string): { ts: string; id: number | string } | null {
+    try {
+        const parsed = JSON.parse(cursor);
+        if (Array.isArray(parsed) && parsed.length === 2) {
+            return { ts: parsed[0], id: parsed[1] };
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+function encodeActivityCursor(ts: string, id: number | string): string {
+    return JSON.stringify([ts, id]);
+}
+
+function entryAfterCursor(entry: ActivityEntry, cursor: { ts: string; id: number | string }): boolean {
+    if (entry.activityTs !== cursor.ts) {
+        return entry.activityTs < cursor.ts;
+    }
+    if (typeof entry.studysetId === 'number' && typeof cursor.id === 'number') {
+        return entry.studysetId < cursor.id;
+    }
+    return String(entry.studysetId) < String(cursor.id);
+}
+
+function entryBeforeCursor(entry: ActivityEntry, cursor: { ts: string; id: number | string }): boolean {
+    if (entry.activityTs !== cursor.ts) {
+        return entry.activityTs > cursor.ts;
+    }
+    if (typeof entry.studysetId === 'number' && typeof cursor.id === 'number') {
+        return entry.studysetId > cursor.id;
+    }
+    return String(entry.studysetId) > String(cursor.id);
 }
 
 export * from "./db"
@@ -212,6 +294,66 @@ export const idbApiLayer = {
         }
 
         return terms;
+    },
+    getStudysetsByIds: async function (ids: number[], resolveProps?: { terms?: boolean | TermResolveProps }) {
+        const studysets = await db.studysets.bulkGet(ids);
+
+        if (resolveProps?.terms) {
+            const allTerms = await db.terms
+                .where("studysetId")
+                .anyOf(ids)
+                .toArray();
+
+            const termsByStudysetId = new Map<number, Term[]>();
+            for (const term of allTerms) {
+                let list = termsByStudysetId.get(term.studysetId);
+                if (!list) {
+                    list = [];
+                    termsByStudysetId.set(term.studysetId, list);
+                }
+                list.push(term);
+            }
+
+            const termResolveProps = resolveProps.terms === true ? undefined : resolveProps.terms;
+
+            for (const studyset of studysets) {
+                if (studyset == null) continue;
+                const terms = termsByStudysetId.get(studyset.id) || [];
+                terms.sort((a, b) => a.sortOrder - b.sortOrder);
+
+                if (termResolveProps) {
+                    await Promise.all(terms.map(async term => {
+                        const promises: {
+                            progress?: Promise<TermProgress[]>;
+                            termImageUrl?: Promise<string | null>;
+                            defImageUrl?: Promise<string | null>;
+                        } = {};
+                        if (termResolveProps.progress) {
+                            promises.progress = db.termProgress.where("termId").equals(term.id).toArray();
+                        }
+                        if (termResolveProps.termImageUrl && term.termImageKey != null) {
+                            promises.termImageUrl = idbLayerImg.getImageObjectUrl(term.termImageKey);
+                        }
+                        if (termResolveProps.defImageUrl && term.defImageKey != null) {
+                            promises.defImageUrl = idbLayerImg.getImageObjectUrl(term.defImageKey);
+                        }
+                        const results = await Promise.all(Object.entries(promises).map(async ([k, p]) => [k, await p]));
+                        const resolved = Object.fromEntries(results) as {
+                            progress?: TermProgress[];
+                            termImageUrl?: string;
+                            defImageUrl?: string;
+                        };
+                        term.progress = resolved.progress?.[0] ?? undefined;
+                        term.termImageUrl = term.termImageKey == null ? null : resolved.termImageUrl;
+                        term.defImageUrl = term.defImageKey == null ? null : resolved.defImageUrl;
+                    }));
+                }
+
+                studyset.terms = terms;
+            }
+        }
+
+        return studysets;
     },
     createStudyset: async function ({ title, draft }: { title: string, draft: boolean }) {
         const rnISOString = (new Date()).toISOString();
@@ -878,5 +1020,168 @@ export const idbApiLayer = {
 
             return await this.getMatchActivityById(matchId, { termIds: true, incorrectPairIds: true });
         });
+    },
+    getRecentActivityStudysets: async function ({
+        first,
+        after,
+        last,
+        before,
+        skipCloudStudysets,
+        getCloudStudysets
+    }: {
+        first?: number;
+        after?: string;
+        last?: number;
+        before?: string;
+        skipCloudStudysets?: boolean;
+        getCloudStudysets?: (uuids: string[]) => Promise<(Studyset | null)[]>;
+    } = {}) {
+        const entries = await collectRecentActivityEntries();
+
+        const isBackward = before != null;
+        const limit = isBackward
+            ? Math.min(last ?? 24, 999)
+            : Math.min(first ?? 24, 999);
+
+        let pageEntries: ActivityEntry[];
+        let hasPrevious = false;
+        let hasNext = false;
+
+        if (isBackward) {
+            const beforeCursor = before ? decodeActivityCursor(before) : null;
+            if (beforeCursor) {
+                pageEntries = entries.filter(e => entryBeforeCursor(e, beforeCursor));
+            } else {
+                pageEntries = [...entries];
+            }
+            pageEntries.sort((a, b) => {
+                const tsCmp = a.activityTs.localeCompare(b.activityTs);
+                if (tsCmp !== 0) return tsCmp;
+                if (typeof a.studysetId === 'number' && typeof b.studysetId === 'number') {
+                    return a.studysetId - b.studysetId;
+                }
+                return String(a.studysetId).localeCompare(String(b.studysetId));
+            });
+            pageEntries = pageEntries.slice(0, limit + 1);
+            hasPrevious = pageEntries.length > limit;
+            if (hasPrevious) pageEntries.pop();
+            pageEntries.reverse();
+        } else {
+            const afterCursor = after ? decodeActivityCursor(after) : null;
+            if (afterCursor) {
+                pageEntries = entries.filter(e => entryAfterCursor(e, afterCursor));
+            } else {
+                pageEntries = [...entries];
+            }
+            pageEntries = pageEntries.slice(0, limit + 1);
+            hasNext = pageEntries.length > limit;
+            if (hasNext) pageEntries.pop();
+        }
+
+        const localIds: number[] = [];
+        const cloudIds: string[] = [];
+        for (const entry of pageEntries) {
+            if (typeof entry.studysetId === 'number') {
+                localIds.push(entry.studysetId);
+            } else {
+                cloudIds.push(entry.studysetId);
+            }
+        }
+
+        if (cloudIds.length > 0 && !getCloudStudysets && !skipCloudStudysets) {
+            throw new Error(
+                "(idbApiLayer.getRecentActivityStudysets) cloud studyset UUIDs found but no getCloudStudysets callback provided. " +
+                "Pass skipCloudStudysets: true to skip them, or provide a getCloudStudysets callback."
+            );
+        }
+
+        const localStudysets = await this.getStudysetsByIds(localIds);
+
+        let cloudStudysets: (Studyset | null)[] = [];
+        if (cloudIds.length > 0 && getCloudStudysets) {
+            cloudStudysets = await getCloudStudysets(cloudIds);
+        }
+
+        const localMap = new Map<number, Studyset>();
+        for (const s of localStudysets) {
+            if (s && !s.draft) {
+                localMap.set(s.id, s);
+            }
+        }
+
+        const cloudMap = new Map<string, Studyset>();
+        for (let i = 0; i < cloudIds.length; i++) {
+            const s = cloudStudysets[i];
+            if (s) {
+                cloudMap.set(cloudIds[i], s);
+            }
+        }
+
+        const edges: { node: Studyset; cursor: string }[] = [];
+        for (const entry of pageEntries) {
+            let studyset: Studyset | undefined;
+            if (typeof entry.studysetId === 'number') {
+                studyset = localMap.get(entry.studysetId);
+            } else {
+                studyset = cloudMap.get(entry.studysetId);
+            }
+            if (studyset) {
+                edges.push({
+                    node: studyset,
+                    cursor: encodeActivityCursor(entry.activityTs, entry.studysetId)
+                });
+            }
+        }
+
+        return {
+            edges,
+            pageInfo: {
+                hasNextPage: hasNext,
+                hasPreviousPage: hasPrevious,
+                startCursor: edges.length > 0 ? edges[0].cursor : null,
+                endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null
+            }
+        };
+    },
+    getRecentActivityStudysetCount: async function ({
+        skipCloudStudysets,
+        getCloudStudysets
+    }: {
+        skipCloudStudysets?: boolean;
+        getCloudStudysets?: (uuids: string[]) => Promise<(Studyset | null)[]>;
+    } = {}) {
+        const entries = await collectRecentActivityEntries();
+
+        const localIds: number[] = [];
+        const cloudIds: string[] = [];
+        for (const entry of entries) {
+            if (typeof entry.studysetId === 'number') {
+                localIds.push(entry.studysetId);
+            } else {
+                cloudIds.push(entry.studysetId);
+            }
+        }
+
+        if (cloudIds.length > 0 && !getCloudStudysets && !skipCloudStudysets) {
+            throw new Error(
+                "(idbApiLayer.getRecentActivityStudysetCount) cloud studyset UUIDs found but no getCloudStudysets callback provided. " +
+                "Pass skipCloudStudysets: true to skip them, or provide a getCloudStudysets callback."
+            );
+        }
+
+        const localStudysets = await this.getStudysetsByIds(localIds);
+        let count = 0;
+        for (const s of localStudysets) {
+            if (s && !s.draft) count++;
+        }
+
+        if (cloudIds.length > 0 && getCloudStudysets) {
+            const cloudStudysets = await getCloudStudysets(cloudIds);
+            for (const s of cloudStudysets) {
+                if (s && !s.draft) count++;
+            }
+        }
+
+        return count;
     }
 }
