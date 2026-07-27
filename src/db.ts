@@ -152,6 +152,12 @@ interface ReviewEvent {
     answeredString: string | null
 }
 
+interface RecentActivity {
+    id: number
+    studysetId: number | string
+    timestamp: string
+}
+
 interface Image {
     key: number
     blob: Blob
@@ -189,6 +195,10 @@ const db = new Dexie("quizfreelydata") as Dexie & {
     images: EntityTable<
         Image,
         "key"
+    >
+    recentActivity: EntityTable<
+        RecentActivity,
+        "id"
     >
 }
 
@@ -593,6 +603,9 @@ db.version(20).stores({
     matchActivities: "++id, *studysetIds, endTimestamp",
     reviewEvents: "++id, termId, practiceTestQuestionId, matchActivityId, timestamp, answeredTermId, practiceTestQuestionType, reviewActivityType"
 });
+db.version(21).stores({
+    recentActivity: "++id, studysetId, timestamp"
+});
 
-export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, ReviewEvent, MatchActivity, PracticeTestQuestionType, ReviewActivityType }
+export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, ReviewEvent, MatchActivity, PracticeTestQuestionType, ReviewActivityType, RecentActivity }
 export { db };
