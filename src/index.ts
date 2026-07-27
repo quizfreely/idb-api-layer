@@ -1109,6 +1109,20 @@ export const idbApiLayer = {
             }
         }
 
+        if (localIds.length > 0) {
+            const allLocalTerms = await db.terms.where("studysetId").anyOf(localIds).toArray();
+            const termsCountByStudysetId = new Map();
+            for (const term of allLocalTerms) {
+                termsCountByStudysetId.set(
+                    term.studysetId,
+                    (termsCountByStudysetId.get(term.studysetId) ?? 0) + 1
+                );
+            }
+            for (const [id, s] of localMap) {
+                s.termsCount = termsCountByStudysetId.get(id) ?? 0;
+            }
+        }
+
         const cloudMap = new Map<string, Studyset>();
         for (let i = 0; i < cloudIds.length; i++) {
             const s = cloudStudysets[i];
