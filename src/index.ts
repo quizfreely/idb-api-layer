@@ -141,11 +141,11 @@ export const idbApiLayer = {
             );
         }
         if (resolveProps?.reviewEventStatsByDay != null) {
-            studysets[0].reviewEventStatsByDay = await this.getReviewEventStatsByDay(
-                id,
-                typeof resolveProps.reviewEventStatsByDay === "number" ?
+            studysets[0].reviewEventStatsByDay = await this.getReviewEventStatsByDay({
+                studysetId: id,
+                last: typeof resolveProps.reviewEventStatsByDay === "number" ?
                     resolveProps.reviewEventStatsByDay : 7
-            );
+            });
         }
 
         return studysets[0];
@@ -331,15 +331,33 @@ export const idbApiLayer = {
 
         return studysets;
     },
-    getReviewEventStatsByDay: async function (studysetId: number | string, last: number = 7): Promise<ReviewEventStats[]> {
+    getReviewEventStatsByDay: async function ({
+        studysetId,
+        termIds,
+        last = 7
+    }: {
+        studysetId?: number | string;
+        termIds?: (number | string)[];
+        last?: number;
+    } = {}): Promise<ReviewEventStats[]> {
         const days = last > 0 ? last : 7;
 
-        const termIds = await db.terms.where("studysetId").equals(studysetId).primaryKeys();
-        if (termIds.length == 0) {
+        /* resolve which term ids to look up: either the caller passes them
+           directly (e.g. cloud studyset terms with UUID ids), or we look them
+           up from the local studyset */
+        let termIdsToLookup: (number | string)[];
+        if (termIds != null && termIds.length > 0) {
+            termIdsToLookup = termIds;
+        } else if (studysetId != null) {
+            termIdsToLookup = await db.terms.where("studysetId").equals(studysetId).primaryKeys();
+        } else {
+            termIdsToLookup = [];
+        }
+        if (termIdsToLookup.length == 0) {
             return [];
         }
 
-        const reviewEvents = await db.reviewEvents.where("termId").anyOf(termIds).toArray();
+        const reviewEvents = await db.reviewEvents.where("termId").anyOf(termIdsToLookup).toArray();
 
         /* local day buckets: JS date object math uses the user's local timezone,
            so the day cutoff differs from UTC like the cloud API's timezone handling */
