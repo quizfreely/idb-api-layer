@@ -6,7 +6,7 @@
  * https://github.com/quizfreely/idb-api-layer
  */
 import Dexie from 'dexie';
-import { db, Studyset, Term, TermProgress, PracticeTestQuestion, ReviewEvent, MatchActivity, MCQData, TFQData, FRQData, Question, PracticeTestQuestionType, ReviewActivityType } from "./db";
+import { db, Studyset, Term, TermProgress, PracticeTestQuestion, ReviewEvent, MatchActivity, MCQData, TFQData, FRQData, Question, PracticeTestQuestionType, ReviewActivityType, ReviewEventStats } from "./db";
 import { idbLayerImg } from "./images";
 
 const RECENT_ACTIVITY_LIMIT = 100;
@@ -63,6 +63,7 @@ type StudysetResolveProps = {
     terms?: boolean | TermResolveProps;
     practiceTests?: boolean;
     matchActivities?: boolean;
+    reviewEventStatsByDay?: boolean | number;
 }
 type TermResolveProps = {
     progress?: boolean;
@@ -137,6 +138,13 @@ export const idbApiLayer = {
             /* local timestamps are ISO strings in UTC, so alphanumeric/lexical sorting is the same as chronological sorting */
             studysets[0].matchActivities?.sort(
                 (a, b) => b.endTimestamp.localeCompare(a.endTimestamp)
+            );
+        }
+        if (resolveProps?.reviewEventStatsByDay != null) {
+            studysets[0].reviewEventStatsByDay = await this.getReviewEventStatsByDay(
+                id,
+                typeof resolveProps.reviewEventStatsByDay === "number" ?
+                    resolveProps.reviewEventStatsByDay : 7
             );
         }
 
@@ -322,6 +330,53 @@ export const idbApiLayer = {
         }
 
         return studysets;
+    },
+    getReviewEventStatsByDay: async function (studysetId: number | string, last: number = 7): Promise<ReviewEventStats[]> {
+        const days = last > 0 ? last : 7;
+
+        const termIds = await db.terms.where("studysetId").equals(studysetId).primaryKeys();
+        if (termIds.length == 0) {
+            return [];
+        }
+
+        const reviewEvents = await db.reviewEvents.where("termId").anyOf(termIds).toArray();
+
+        /* local day buckets: JS date object math uses the user's local timezone,
+           so the day cutoff differs from UTC like the cloud API's timezone handling */
+        const now = new Date();
+        const oldestDayStart = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate() - (days - 1)
+        ).getTime();
+
+        const statsByDay = new Map<string, { correct: number, incorrect: number }>();
+        for (const re of reviewEvents) {
+            const timestamp = new Date(re.timestamp);
+            if (timestamp.getTime() < oldestDayStart) {
+                continue;
+            }
+
+            const dayKey = `${timestamp.getFullYear()}-` +
+                `${String(timestamp.getMonth() + 1).padStart(2, "0")}-` +
+                `${String(timestamp.getDate()).padStart(2, "0")}`;
+
+            let stat = statsByDay.get(dayKey);
+            if (!stat) {
+                stat = { correct: 0, incorrect: 0 };
+                statsByDay.set(dayKey, stat);
+            }
+            if (re.correct) {
+                stat.correct++;
+            } else {
+                stat.incorrect++;
+            }
+        }
+
+        const stats: ReviewEventStats[] = Array.from(statsByDay.entries())
+            .map(([timestamp, { correct, incorrect }]) => ({ timestamp, correct, incorrect }));
+        stats.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        return stats;
     },
     createStudyset: async function ({ title, draft }: { title: string, draft: boolean }) {
         const rnISOString = (new Date()).toISOString();

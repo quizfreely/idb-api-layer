@@ -18,6 +18,7 @@ interface Studyset {
     terms?: Term[]
     practiceTests?: PracticeTest[]
     matchActivities?: MatchActivity[]
+    reviewEventStatsByDay?: ReviewEventStats[]
 }
 
 interface Term {
@@ -150,6 +151,12 @@ interface ReviewEvent {
     practiceTestQuestionType: PracticeTestQuestionType | null
     reviewActivityType: ReviewActivityType
     answeredString: string | null
+}
+
+interface ReviewEventStats {
+    timestamp: string
+    correct: number
+    incorrect: number
 }
 
 interface RecentActivity {
@@ -607,5 +614,5 @@ db.version(21).stores({
     recentActivity: "++id, studysetId, timestamp"
 });
 
-export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, ReviewEvent, MatchActivity, PracticeTestQuestionType, ReviewActivityType, RecentActivity }
+export type { Studyset, Term, TermAtp, PracticeTest, PracticeTestQuestion, MCQData, TFQData, FRQData, Question, MCQ, TFQ, FRQ, TermProgress, ReviewEvent, ReviewEventStats, MatchActivity, PracticeTestQuestionType, ReviewActivityType, RecentActivity }
 export { db };
