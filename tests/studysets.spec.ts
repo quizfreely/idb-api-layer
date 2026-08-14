@@ -177,6 +177,50 @@ test('getReviewEventStatsByDay with termIds (cloud studyset use case)', async ({
   ]);
 });
 
+test('getReviewEventStatsByDay with no filters (all terms)', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const localNoon = (daysAgo: number) => {
+      const d = new Date();
+      d.setHours(12, 0, 0, 0);
+      d.setDate(d.getDate() - daysAgo);
+      return d.toISOString();
+    };
+    const today = localNoon(0);
+    const twoDaysAgo = localNoon(2);
+    const tenDaysAgo = localNoon(10);
+
+    const studysetId = 1;
+    const term1 = await window.idbApiLayer.createTerms(studysetId, [
+      { term: "a", def: "x" }
+    ]);
+    const term2 = await window.idbApiLayer.createTerms(studysetId, [
+      { term: "b", def: "y" }
+    ]);
+
+    await window.db.reviewEvents.bulkAdd([
+      { termId: term1[0], practiceTestQuestionId: null, matchActivityId: null, correct: true, answerWith: "DEF", timestamp: today, answeredTermId: null, practiceTestQuestionType: "mcq", reviewActivityType: "PRACTICE_TEST", answeredString: null },
+      { termId: term1[0], practiceTestQuestionId: null, matchActivityId: null, correct: false, answerWith: "DEF", timestamp: today, answeredTermId: null, practiceTestQuestionType: "mcq", reviewActivityType: "PRACTICE_TEST", answeredString: null },
+      { termId: term2[0], practiceTestQuestionId: null, matchActivityId: null, correct: false, answerWith: "DEF", timestamp: twoDaysAgo, answeredTermId: null, practiceTestQuestionType: "mcq", reviewActivityType: "PRACTICE_TEST", answeredString: null },
+      { termId: term2[0], practiceTestQuestionId: null, matchActivityId: null, correct: true, answerWith: "DEF", timestamp: tenDaysAgo, answeredTermId: null, practiceTestQuestionType: "mcq", reviewActivityType: "PRACTICE_TEST", answeredString: null }
+    ]);
+
+    const dayKey = (iso: string) => {
+      const d = new Date(iso);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
+    const todayKey = dayKey(today);
+    const twoDaysAgoKey = dayKey(twoDaysAgo);
+
+    const stats = await window.idbApiLayer.getReviewEventStatsByDay({ last: 7 });
+    return { stats, todayKey, twoDaysAgoKey };
+  });
+
+  expect(result.stats).toEqual([
+    { timestamp: result.twoDaysAgoKey, correct: 0, incorrect: 1 },
+    { timestamp: result.todayKey, correct: 1, incorrect: 1 }
+  ]);
+});
+
 test('isTitleValid logic through create/updateStudyset', async ({ page }) => {
   const result = await page.evaluate(async () => {
     const id1 = await window.idbApiLayer.createStudyset({
