@@ -392,9 +392,11 @@ export const idbApiLayer = {
                 continue;
             }
 
-            const dayKey = `${timestamp.getFullYear()}-` +
-                `${String(timestamp.getMonth() + 1).padStart(2, "0")}-` +
-                `${String(timestamp.getDate()).padStart(2, "0")}`;
+            const dayKey = new Date(
+                timestamp.getFullYear(),
+                timestamp.getMonth(),
+                timestamp.getDate()
+            ).toISOString();
 
             let stat = statsByDay.get(dayKey);
             if (!stat) {

@@ -117,7 +117,7 @@ test('getStudysetById with reviewEventStatsByDay resolveProps', async ({ page })
 
     const dayKey = (iso: string) => {
       const d = new Date(iso);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
     };
     const todayKey = dayKey(today);
     const twoDaysAgoKey = dayKey(twoDaysAgo);
@@ -162,7 +162,7 @@ test('getReviewEventStatsByDay with termIds (cloud studyset use case)', async ({
 
     const dayKey = (iso: string) => {
       const d = new Date(iso);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
     };
     const todayKey = dayKey(today);
     const twoDaysAgoKey = dayKey(twoDaysAgo);
@@ -206,7 +206,7 @@ test('getReviewEventStatsByDay with no filters (all terms)', async ({ page }) =>
 
     const dayKey = (iso: string) => {
       const d = new Date(iso);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
     };
     const todayKey = dayKey(today);
     const twoDaysAgoKey = dayKey(twoDaysAgo);
