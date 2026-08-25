@@ -922,8 +922,8 @@ export const idbApiLayer = {
 
         return activity;
     },
-    getMatchActivitiesByStudysetId: async function (studysetId: number | string, resolveProps?: MatchActivityResolveProps) {
-        const activities = await db.matchActivities.where("studysetIds").equals(studysetId).toArray();
+    getMatchActivitiesByStudysetIds: async function (studysetIds: (number | string)[], resolveProps?: MatchActivityResolveProps) {
+        const activities = await db.matchActivities.where("studysetIds").anyOf(studysetIds).toArray();
         activities.sort((a, b) => b.endTimestamp.localeCompare(a.endTimestamp));
 
         for (const activity of activities) {
@@ -945,6 +945,9 @@ export const idbApiLayer = {
         }
 
         return activities;
+    },
+    getMatchActivitiesByStudysetId: async function (studysetId: number | string, resolveProps?: MatchActivityResolveProps) {
+        return this.getMatchActivitiesByStudysetIds([studysetId], resolveProps);
     },
     activityHistory: async function ({
         last,
