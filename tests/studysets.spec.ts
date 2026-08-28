@@ -167,7 +167,7 @@ test('getReviewEventStatsByDay with termIds (cloud studyset use case)', async ({
     const todayKey = dayKey(today);
     const twoDaysAgoKey = dayKey(twoDaysAgo);
 
-    const stats = await window.idbApiLayer.getReviewEventStatsByDay({ termIds: [uuid1, uuid2], last: 7 });
+    const stats = await window.idbApiLayer.getReviewEventStatsByDay({ termIds: [uuid1, uuid2], lastDaysBack: 7 });
     return { stats, todayKey, twoDaysAgoKey };
   });
 
@@ -211,7 +211,7 @@ test('getReviewEventStatsByDay with no filters (all terms)', async ({ page }) =>
     const todayKey = dayKey(today);
     const twoDaysAgoKey = dayKey(twoDaysAgo);
 
-    const stats = await window.idbApiLayer.getReviewEventStatsByDay({ last: 7 });
+    const stats = await window.idbApiLayer.getReviewEventStatsByDay({ lastDaysBack: 7 });
     return { stats, todayKey, twoDaysAgoKey };
   });
 
@@ -219,6 +219,74 @@ test('getReviewEventStatsByDay with no filters (all terms)', async ({ page }) =>
     { timestamp: result.twoDaysAgoKey, correct: 0, incorrect: 1 },
     { timestamp: result.todayKey, correct: 1, incorrect: 1 }
   ]);
+});
+
+test('getReviewEventStatsByDay with lastDaysTotal', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const localNoon = (daysAgo: number) => {
+      const d = new Date();
+      d.setHours(12, 0, 0, 0);
+      d.setDate(d.getDate() - daysAgo);
+      return d.toISOString();
+    };
+    const today = localNoon(0);
+    const twoDaysAgo = localNoon(2);
+    const tenDaysAgo = localNoon(10);
+
+    await window.db.reviewEvents.bulkAdd([
+      { termId: 1, practiceTestQuestionId: null, matchActivityId: null, correct: true, answerWith: "DEF", timestamp: today, answeredTermId: null, practiceTestQuestionType: "mcq", reviewActivityType: "PRACTICE_TEST", answeredString: null },
+      { termId: 1, practiceTestQuestionId: null, matchActivityId: null, correct: false, answerWith: "DEF", timestamp: today, answeredTermId: null, practiceTestQuestionType: "mcq", reviewActivityType: "PRACTICE_TEST", answeredString: null },
+      { termId: 2, practiceTestQuestionId: null, matchActivityId: null, correct: true, answerWith: "DEF", timestamp: twoDaysAgo, answeredTermId: null, practiceTestQuestionType: "mcq", reviewActivityType: "PRACTICE_TEST", answeredString: null },
+      { termId: 2, practiceTestQuestionId: null, matchActivityId: null, correct: true, answerWith: "DEF", timestamp: tenDaysAgo, answeredTermId: null, practiceTestQuestionType: "mcq", reviewActivityType: "PRACTICE_TEST", answeredString: null }
+    ]);
+
+    const dayKey = (iso: string) => {
+      const d = new Date(iso);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
+    };
+    const todayKey = dayKey(today);
+    const twoDaysAgoKey = dayKey(twoDaysAgo);
+    const tenDaysAgoKey = dayKey(tenDaysAgo);
+
+    const stats3 = await window.idbApiLayer.getReviewEventStatsByDay({ lastDaysTotal: 3 });
+    const stats2 = await window.idbApiLayer.getReviewEventStatsByDay({ lastDaysTotal: 2 });
+    return { stats3, stats2, todayKey, twoDaysAgoKey, tenDaysAgoKey };
+  });
+
+  expect(result.stats3).toEqual([
+    { timestamp: result.tenDaysAgoKey, correct: 1, incorrect: 0 },
+    { timestamp: result.twoDaysAgoKey, correct: 1, incorrect: 0 },
+    { timestamp: result.todayKey, correct: 1, incorrect: 1 }
+  ]);
+  expect(result.stats2).toEqual([
+    { timestamp: result.twoDaysAgoKey, correct: 1, incorrect: 0 },
+    { timestamp: result.todayKey, correct: 1, incorrect: 1 }
+  ]);
+});
+
+test('getReviewEventStatsByDay parameter validation', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const capture = async (args: any) => {
+      try {
+        await window.idbApiLayer.getReviewEventStatsByDay(args);
+        return null;
+      } catch (e) {
+        return e?.message ?? String(e);
+      }
+    };
+
+    return {
+      bothNull: await capture({}),
+      bothSet: await capture({ lastDaysBack: 7, lastDaysTotal: 7 }),
+      lastDaysBackZero: await capture({ lastDaysBack: 0 }),
+      lastDaysTotalZero: await capture({ lastDaysTotal: 0 })
+    };
+  });
+
+  expect(result.bothNull).toContain("either lastDaysBack or lastDaysTotal must be provided");
+  expect(result.bothSet).toContain("only one of lastDaysBack or lastDaysTotal may be provided");
+  expect(result.lastDaysBackZero).toContain("lastDaysBack must be greater than 0");
+  expect(result.lastDaysTotalZero).toContain("lastDaysTotal must be greater than 0");
 });
 
 test('isTitleValid logic through create/updateStudyset', async ({ page }) => {
