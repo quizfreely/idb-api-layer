@@ -112,8 +112,7 @@ export const idbApiLayer = {
         if (resolveProps?.reviewEventStatsByDay != null) {
             studysets[0].reviewEventStatsByDay = await this.getReviewEventStatsByDay({
                 studysetId: id,
-                lastDaysBack: typeof resolveProps.reviewEventStatsByDay === "number" ?
-                    resolveProps.reviewEventStatsByDay : 7
+                ...resolveProps.reviewEventStatsByDay
             });
         }
         return studysets[0];
@@ -265,10 +264,10 @@ export const idbApiLayer = {
             throw new Error("(idbApiLayer.getReviewEventStatsByDay) either lastDaysBack or lastDaysTotal must be provided");
         }
         if (hasLastDaysBack && lastDaysBack < 1) {
-            throw new Error("(idbApiLayer.getReviewEventStatsByDay) lastDaysBack must be greater than 0");
+            throw new Error("(idbApiLayer.getReviewEventStatsByDay) lastDaysBack must be greater than 0 when not null");
         }
         if (hasLastDaysTotal && lastDaysTotal < 1) {
-            throw new Error("(idbApiLayer.getReviewEventStatsByDay) lastDaysTotal must be greater than 0");
+            throw new Error("(idbApiLayer.getReviewEventStatsByDay) lastDaysTotal must be greater than 0 when not null");
         }
         /* resolve which term ids to look up: either the caller passes them
            directly (e.g. cloud studyset terms with UUID ids), or we look them

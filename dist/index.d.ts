@@ -3,7 +3,10 @@ type StudysetResolveProps = {
     terms?: boolean | TermResolveProps;
     practiceTests?: boolean;
     matchActivities?: boolean;
-    reviewEventStatsByDay?: boolean | number;
+    reviewEventStatsByDay?: {
+        lastDaysBack?: number;
+        lastDaysTotal?: number;
+    };
 };
 type TermResolveProps = {
     progress?: boolean;
